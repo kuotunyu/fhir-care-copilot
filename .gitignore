@@ -1,0 +1,27 @@
+# Secrets — 永不進 git
+.env
+
+# 資料 — 永不進 git(Synthea 下載/生成/子集化產物;錨定根目錄,tests/data 等 fixture 不受影響)
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Node(M4 前端)
+node_modules/
+app/dist/
+
+# 本地雜項
+.DS_Store
+Thumbs.db
+
+# audit log(本地執行產物,不進 git)
+/audit_log/

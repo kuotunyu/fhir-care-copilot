@@ -1,0 +1,5 @@
+# 統一用 LF,避免 Windows/Linux 混用時 CRLF 噪音
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.zip binary

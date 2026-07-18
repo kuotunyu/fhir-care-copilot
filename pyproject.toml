@@ -1,0 +1,52 @@
+[project]
+name = "fhir-copilot"
+version = "0.1.0"
+description = "可追溯、工具受控、預設唯讀的長照個案查詢 agent(Synthea FHIR R4 合成資料)"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.7",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fhir_copilot"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "RUF", # ruff 專屬
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

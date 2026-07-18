@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Repo-managed pre-commit hook. Enable once with:
+#   git config core.hooksPath scripts/git-hooks
+# Why not `pre-commit install`: the hook it generates embeds the venv path
+# encoded in the system locale (cp950 on zh-TW Windows), which breaks under
+# this repo's non-ASCII path (see docs/decisions/0002-python-313.md).
+# This script embeds no absolute paths -- `uv run` resolves the project venv.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+exec uv run pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$HERE" -- "$@"
