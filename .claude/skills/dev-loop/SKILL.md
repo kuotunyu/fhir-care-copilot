@@ -16,6 +16,9 @@ description: FHIR Care Copilot 開發迴圈——環境同步、測試、lint、
 | 型別 | `just typecheck` | `uv run mypy` |
 | 全套 | `just check` | 上面三項依序 |
 | pre-commit | `just precommit` | `uv run pre-commit run --all-files` |
+| 啟用 git hooks(一次) | `just hooks` | `git config core.hooksPath scripts/git-hooks` |
+
+**勿用 `pre-commit install`**:它產生的 hook 會把 venv 路徑用 cp950 寫死,在本 repo 的中文路徑下會炸(ADR 0002)。repo 內建 hook 在 `scripts/git-hooks/`,用 `uv run` 不嵌絕對路徑。
 
 注意:Windows 上 `just` 由 winget 安裝(`Casey.Just`),新開的 shell 才吃得到 PATH。
 

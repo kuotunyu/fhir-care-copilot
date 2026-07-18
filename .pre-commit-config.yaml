@@ -1,4 +1,6 @@
-# Install: uv run pre-commit install
+# Enable hooks: git config core.hooksPath scripts/git-hooks
+#   (do NOT use `pre-commit install` -- it writes the venv path in cp950,
+#    which breaks under this repo's non-ASCII path; see ADR 0002)
 # Run all: uv run pre-commit run --all-files
 # NOTE: keep this file ASCII-only -- pre-commit reads it with the system
 # locale encoding (cp950 on zh-TW Windows), so non-ASCII bytes break it.

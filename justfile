@@ -30,3 +30,7 @@ check: lint typecheck test
 # pre-commit 全檔跑一次
 precommit:
     uv run pre-commit run --all-files
+
+# 啟用 repo 內建 git hooks(勿用 pre-commit install,見 ADR 0002)
+hooks:
+    git config core.hooksPath scripts/git-hooks

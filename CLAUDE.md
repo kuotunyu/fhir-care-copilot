@@ -32,6 +32,7 @@
 - 文件與 UI：正體中文為主，專有名詞直接用原文
 - Python 3.13 + uv（勿降回 3.11/3.12：中文路徑 cp950 `.pth` 問題，見 ADR 0002）；ruff + mypy + pytest + pre-commit
 - 會被工具以系統 locale 編碼讀取的設定檔（如 `.pre-commit-config.yaml`）保持 ASCII-only
+- Git hooks 用 `git config core.hooksPath scripts/git-hooks`（`just hooks`），**勿用 `pre-commit install`**（其 hook 以 cp950 嵌 venv 路徑，中文路徑下會炸）
 - 重大決策寫 `docs/decisions/NNNN-*.md`（ADR）
 - LICENSE：Apache-2.0；Synthea 引用格式見 `PLAN.md` §7
 - 本機 git only（不建 remote、不 push；之後由使用者自行整理上 GitHub）

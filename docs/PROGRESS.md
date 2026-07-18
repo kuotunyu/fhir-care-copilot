@@ -29,6 +29,7 @@ uv run python -V     → Python 3.13.13
 **決策 / 發現**
 - 🔥 **中文路徑地雷（已解）**：Python 3.11/3.12 的 `site` 讀 `.pth` 固定用 cp950（`PYTHONUTF8=1` 實測無效），editable install 的 UTF-8 路徑直接讓 venv 啟動即炸 → **改用 Python 3.13**（`.pth` 改 UTF-8 解碼），全部恢復正常。詳見 ADR 0002
 - pre-commit 用系統 locale 讀自己的設定檔 → `.pre-commit-config.yaml` 必須 **ASCII-only**（中文註解會炸，實測）
+- cp950 第三例：`pre-commit install` 的 hook 以 Big5 嵌 venv 路徑 → 改用 repo 內建 hook（`core.hooksPath scripts/git-hooks`、`uv run` 不嵌路徑），commit 時 9 個 hooks 實測通過
 - 審查修正：`.gitignore` 的 `data/` 錨定為 `/data/`（否則 M1 的 `tests/data/` fixture 會被默默忽略）；CI 改 `uv sync --locked`；setup-uv 釘 `v8.3.2`（**v8 起廢除 major tag，`@v8` 不存在**）；README 殘留 3.11 字樣清除
 - `.env` 確認未被追蹤；`git check-ignore` 驗證 `.env`、`data/` 生效
 
