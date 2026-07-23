@@ -1,0 +1,186 @@
+{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000001",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "b2000000-0000-0000-0000-000000000001",
+        "name": [
+          {
+            "use": "official",
+            "family": "Fixture004",
+            "given": ["Ben003"]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1935-11-20"
+      },
+      "request": { "method": "POST", "url": "Patient" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000002",
+      "resource": {
+        "resourceType": "Medication",
+        "id": "b2000000-0000-0000-0000-000000000002",
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "197361",
+              "display": "Amlodipine 5 MG Oral Tablet"
+            }
+          ],
+          "text": "Amlodipine 5 MG Oral Tablet"
+        },
+        "status": "active"
+      },
+      "request": { "method": "POST", "url": "Medication" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000003",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "b2000000-0000-0000-0000-000000000003",
+        "status": "completed",
+        "intent": "order",
+        "medicationReference": {
+          "reference": "urn:uuid:b2000000-0000-0000-0000-000000000002"
+        },
+        "subject": { "reference": "urn:uuid:b2000000-0000-0000-0000-000000000001" },
+        "authoredOn": "2018-02-01T10:00:00+08:00"
+      },
+      "request": { "method": "POST", "url": "MedicationRequest" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000004",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "b2000000-0000-0000-0000-000000000004",
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "310798",
+              "display": "Hydrochlorothiazide 25 MG Oral Tablet"
+            }
+          ],
+          "text": "Hydrochlorothiazide 25 MG Oral Tablet"
+        },
+        "subject": { "reference": "urn:uuid:b2000000-0000-0000-0000-000000000001" },
+        "authoredOn": "2019-07-15T11:00:00+08:00"
+      },
+      "request": { "method": "POST", "url": "MedicationRequest" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000005",
+      "resource": {
+        "resourceType": "Condition",
+        "id": "b2000000-0000-0000-0000-000000000005",
+        "clinicalStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "code": "active"
+            }
+          ]
+        },
+        "verificationStatus": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              "code": "confirmed"
+            }
+          ]
+        },
+        "code": {
+          "coding": [
+            {
+              "system": "http://snomed.info/sct",
+              "code": "59621000",
+              "display": "Essential hypertension (disorder)"
+            }
+          ],
+          "text": "Essential hypertension (disorder)"
+        },
+        "subject": { "reference": "urn:uuid:b2000000-0000-0000-0000-000000000001" },
+        "onsetDateTime": "2018-02-01T10:00:00+08:00"
+      },
+      "request": { "method": "POST", "url": "Condition" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000006",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "b2000000-0000-0000-0000-000000000006",
+        "status": "final",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs"
+              }
+            ]
+          }
+        ],
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "8867-4",
+              "display": "Heart rate"
+            }
+          ],
+          "text": "Heart rate"
+        },
+        "subject": { "reference": "urn:uuid:b2000000-0000-0000-0000-000000000001" },
+        "effectiveDateTime": "2025-05-01T15:00:00+08:00",
+        "valueQuantity": {
+          "value": 72,
+          "unit": "/min",
+          "system": "http://unitsofmeasure.org",
+          "code": "/min"
+        }
+      },
+      "request": { "method": "POST", "url": "Observation" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000007",
+      "resource": {
+        "resourceType": "Medication",
+        "id": "b2000000-0000-0000-0000-000000000007",
+        "code": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "314076",
+              "display": "Lisinopril 10 MG Oral Tablet"
+            }
+          ],
+          "text": "Lisinopril 10 MG Oral Tablet"
+        },
+        "status": "active"
+      },
+      "request": { "method": "POST", "url": "Medication" }
+    },
+    {
+      "fullUrl": "urn:uuid:b2000000-0000-0000-0000-000000000008",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "b2000000-0000-0000-0000-000000000008",
+        "status": "active",
+        "intent": "order",
+        "medicationReference": {
+          "reference": "urn:uuid:b2000000-0000-0000-0000-000000000007"
+        },
+        "subject": { "reference": "urn:uuid:b2000000-0000-0000-0000-000000000001" },
+        "authoredOn": "2020-03-10T09:00:00+08:00"
+      },
+      "request": { "method": "POST", "url": "MedicationRequest" }
+    }
+  ]
+}

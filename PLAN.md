@@ -1,6 +1,6 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0 完成（2026-07-19），下一步 M1 資料層
+> **狀態**：M0/M1/M2/M3 完成（2026-07-24），下一步 M4 API + 前端工作台
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -27,15 +27,16 @@
 - [x] **M0 — Phase 0 + 工程骨架**（2026-07-19 完成）
   本機 `git init`（不建 remote）；uv + `pyproject.toml`（Python 3.13，見 ADR 0002——原定 3.11 因 Windows 中文路徑 cp950 `.pth` 問題改版）；目錄 `src/ app/ tests/ scripts/ docs/ configs/`；`.gitignore`（`data/raw`、`data/processed`、`.env`、`reports/` 生成物另議）；README 骨架含 Synthea 來源/Apache-2.0/引用（見 §7）；`docs/decisions/0001-scope.md`（threat model、synthetic-only、read-only default、prompt injection 邊界、PII/PHI 假設、人工確認點）；ruff + mypy + pytest + pre-commit + GitHub Actions 骨架；justfile。
   **驗收**：`uv run pytest` 綠（至少 1 個 smoke test）；pre-commit 本機可跑；CI yaml 語法正確。
-- [ ] **M1 — 資料層**
+- [x] **M1 — 資料層**（2026-07-19 實作,2026-07-24 21-agent 審查修正完成）
   `scripts/download_or_generate_synthea.py`：預設下載官方 1K FHIR R4 樣本（URL 見 §7）+ `--subset N`（預設 100）子集化到 `data/processed`；偵測到 Java 17+ 時可 `-s <seed> -p 500` 本地生成。`FHIRStore` interface（Protocol）+ `LocalBundleFHIRStore`：病患索引、依 type/status/date 查資源、解析 `urn:uuid:` 參照、容忍 conditional search URL 參照、跳過 `hospitalInformation*.json` / `practitionerInformation*.json`。預留 HAPI FHIR base URL adapter 介面（只留 interface，不實作）。測試 fixture：committed 的 2–3 位手工裁剪合成病患（需涵蓋 `stopped` 與 `completed` 兩種藥物狀態、`medicationCodeableConcept` 與 `medicationReference` 兩種編碼）。
   **驗收**：store 單元測試綠；真實下載 1K 樣本、子集化 100 位並成功載入列出。
-- [ ] **M2 — 工具層（5 個唯讀工具）**
+- [x] **M2 — 工具層（5 個唯讀工具）**（2026-07-19 實作,2026-07-24 16-agent 審查修正完成）
   `get_patient_demographics`、`list_active_conditions`、`list_active_medications`、`get_recent_observations`、`get_care_plan_timeline`。全部 Pydantic v2 嚴格 schema（輸入輸出皆是）；每個回傳值帶 `evidence[]`（resourceType/id）；查無資料回傳明確 insufficient 結構（不是空 list 混過去）。
   **驗收**：每工具獨立單元測試綠（含缺資料路徑）。
-- [ ] **M3 — Agent loop + providers**
-  回應契約（見 §5）；mock provider（deterministic、CI 不需金鑰）；agent loop 護欄：max tool rounds、timeout、輸入長度上限、工具 allowlist（write 類工具不存在於 loop）；Gemini 2.5 Flash-Lite adapter（`google-genai`、手動 function calling、`automatic_function_calling.disable=True`）；OpenAI adapter（Responses API；模型 id 走 config 不寫死）；`propose_care_note` 草稿工具 + 確認後寫本地 audit log JSONL；token 用量與成本計算（單價放 `configs/pricing.yaml` 之類，不寫死在程式）。
-  **驗收**：mock provider 全流程測試綠；Gemini 真跑 1 題並回報真實輸出。
+- [x] **M3 — Agent loop + providers**（2026-07-24 完成）
+  回應契約（見 §5）；mock provider（deterministic、CI 不需金鑰）；agent loop 護欄：max tool rounds、timeout、輸入長度上限、工具 allowlist（write 類工具不存在於 loop）；Gemini adapter（`google-genai`、手動 function calling、`automatic_function_calling.disable=True`；model id 走 config，見下方「模型現況變化」）；OpenAI adapter（Responses API；模型 id 走 config 不寫死）；`propose_care_note` 草稿 + `confirm_and_log` 確認後寫本地 audit log JSONL（**刻意不進入**唯讀 agent loop 的工具清單，見 ADR 0001）；token 用量與成本計算（單價放 `configs/pricing.yaml`，不寫死在程式）；病患範圍由 loop 直接注入工具呼叫、LLM 無法透過參數竄改（見 ADR 0003）。
+  **驗收**：mock provider 全流程測試綠（80 個測試）；Gemini 與 OpenAI 皆真跑並回報真實輸出（見下方「模型現況變化」與 PROGRESS.md）。
+  ⚠️ **模型現況變化**（2026-07-24 實測發現）：`gemini-2.5-flash-lite`（§7 查證時的預設模型）對這把金鑰的帳號回傳 404「對新使用者已下架」，即使 `client.models.list()` 仍列得出來。改用同世代目前可用的 `gemini-3.1-flash-lite`（已用同一把金鑰實測成功），定價 $0.25 input / $1.50 output per 1M tokens（原模型 $0.10/$0.40 仍保留在 pricing.yaml 供之後換帳號時使用）。教訓：模型可用性會因 API 金鑰/帳號的新舊而異，不是只看官方文件列不列出來就準。
 - [ ] **M4 — API + 前端工作台**
   FastAPI endpoints：病患清單、timeline、chat、care-note confirm、health/mode。React + Vite 工作台：病患選擇器、時間軸、對話區、證據抽屜、cost/latency badge、拒答狀態；**正體中文 UI（專有名詞保留原文）**、鍵盤可操作、手機可瀏覽；`vite build` 靜態檔由 FastAPI serve（單一 container）。
   **驗收**：一行指令本機啟動；90 秒 demo 路徑手動走通；基本 e2e smoke。
@@ -126,10 +127,13 @@ data/raw、data/processed   # gitignored
 - 每位病患一個 JSON = 一個 `Bundle`，預設 `type: "transaction"`；第一個 entry 是 Patient，其餘大致依 Encounter 時序
 - `Condition`：`clinicalStatus` = `active`/`resolved`；`onsetDateTime` 必有、`abatementDateTime` 結束才有；SNOMED CT
 - `MedicationRequest`：進行中 `active`；**已結束的 status 有版本差異**——sep2019 樣本（pre-v3.4.0）用 `stopped`、v3.4.0+ 用 `completed` → parser 需接受 `active/stopped/completed`；編碼通常 `medicationCodeableConcept`（RxNorm），新版開 US Core IG 時可能是 `medicationReference` → **兩種都要處理**
-- `Observation`：`status="final"`、LOINC、`effectiveDateTime`、`valueQuantity`（UCUM）；也可能 `valueCodeableConcept` 或多 component（如血壓）
+- `Observation`：`status="final"`、LOINC、`effectiveDateTime`、`valueQuantity`（UCUM）；也可能 `valueCodeableConcept`、多 component（如血壓），或 **`valueString`**（social-history 類別常見，如居住/受虐狀況——對長照個案特別重要，M2 審查發現漏接會讓工具靜默回傳 `None`，跟「真的沒資料」無法區分）；真實 100 位病患樣本（19,550 筆）驗證只出現這 4 種 value[x] 形式
 - `CarePlan`：`status` = `active`/`completed`；`period.start` 必有；活動在 `activity[].detail`；`addresses[]` 參照 Condition
-- Bundle 內互相參照用 `urn:uuid:` fullUrl；transaction 模式下 **Practitioner/Organization/Location 不在病患 bundle 內**（conditional search URL 參照）→ store 需容忍無法解析的參照
+- Bundle 內互相參照用 `urn:uuid:` fullUrl
+- ⚠️ **修正**（M1 審查用真實下載的 1K 樣本重新查證，原始 spec 依二手文件寫的說法是錯的）：實測掃描全部 1,280 個 patient bundle、190 萬筆 reference 欄位，**0 筆是 conditional search URL**——Practitioner、Organization 都內嵌在病患 bundle 內、用 `urn:uuid` 就能正常解析（只有 Location 真的完全沒出現）。store 對含 `?` 的參照回傳 None 是**防禦性保留**（給其他版本/設定的 Synthea 輸出用），不是這份資料實際會走到的路徑。真正無法解析的參照是 **`#` 開頭的 contained resource 參照**（只出現在 `ExplanationOfBenefit`，如 `referral: "#referral"`，指向自己的 `contained[]`），1K 樣本裡有 93,736 筆——目前沒有工具讀 ExplanationOfBenefit，一律回傳 None
 - `hospitalInformation*.json` / `practitionerInformation*.json` 是 `batch` type bundle → 載入時跳過
+- ⚠️ **時間排序陷阱**：同一病患跨年份的 `effectiveDateTime`/`period.start` 會混用 `-04:00`/`-05:00` 位移（日光節約時間），**直接比字串排序會與實際時間相反**（M2 審查用真實資料證實）；一律要 parse 成 `datetime` 再比較，不能比字串
+- ⚠️ **資料瑕疵**：真實樣本中 Left ventricular Ejection fraction 的 `category` code 誤植為單數 `vital-sign`（標準應為複數 `vital-signs`），19,550 筆中僅 5 筆；以 `category="vital-signs"` 篩選查不到——上游資料的極少數不一致，暫不處理，只記錄
 
 ### Gemini（google-genai SDK）
 - 現行 SDK：`google-genai`（`from google import genai`）；舊 `google-generativeai` 已於 2025-11-30 棄用

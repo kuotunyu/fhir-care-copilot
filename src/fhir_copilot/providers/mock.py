@@ -1,0 +1,147 @@
+"""MockProvider:deterministic、不打任何外部 API。
+
+CI 與離線開發的預設 provider(configs/models.yaml `default_provider: mock`)。
+不是「假裝聰明的 LLM」——只依問題關鍵字選一個唯讀工具、執行一輪、把
+deterministic tool 回傳的結構化結果組成文字答案,讓整條 agent loop
+(guardrails、evidence、拒答、cost=0)可以在沒有金鑰的情況下被完整測試。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
+from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
+from fhir_copilot.tools.registry import ToolSpec
+
+# 依序比對;第一個命中的關鍵字決定要呼叫的工具
+_KEYWORD_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("藥", "medication", "用藥"), "list_active_medications"),
+    (("照護計畫", "careplan", "care plan"), "get_care_plan_timeline"),
+    (("診斷", "condition", "疾病", "病症"), "list_active_conditions"),
+    (
+        ("觀察", "檢驗", "檢查", "生命徵象", "血壓", "體重", "observation", "vital", "lab"),
+        "get_recent_observations",
+    ),
+    (("基本資料", "demographics", "姓名", "性別", "出生"), "get_patient_demographics"),
+)
+_DEFAULT_TOOL = "get_patient_demographics"
+
+_NOT_FOUND_TEXT = "查無此病患資料,無法回答。"
+
+
+def _select_tool(user_message: str) -> str:
+    lowered = user_message.lower()
+    for keywords, tool_name in _KEYWORD_RULES:
+        if any(kw.lower() in lowered for kw in keywords):
+            return tool_name
+    return _DEFAULT_TOOL
+
+
+def _estimate_tokens(text: str) -> int:
+    # 粗估(mock 定價為 0,數字只是給 UI 展示用);中英文混雜,不用真 tokenizer
+    return max(1, len(text) // 4)
+
+
+def _render_demographics(output: dict[str, Any]) -> str:
+    d = output.get("demographics")
+    if not d:
+        return _NOT_FOUND_TEXT
+    gender = d.get("gender") or "未記錄"
+    birth_date = d.get("birth_date") or "未記錄"
+    return f"病患姓名:{d['name']},性別:{gender},出生日期:{birth_date}。"
+
+
+def _render_conditions(output: dict[str, Any]) -> str:
+    if not output.get("ok"):
+        return _NOT_FOUND_TEXT
+    conditions = output.get("conditions") or []
+    if not conditions:
+        return "目前沒有生效中(active)的診斷記錄。"
+    names = "、".join(c["display"] for c in conditions)
+    return f"目前生效中的診斷:{names}。"
+
+
+def _render_medications(output: dict[str, Any]) -> str:
+    if not output.get("ok"):
+        return _NOT_FOUND_TEXT
+    medications = output.get("medications") or []
+    if not medications:
+        return "目前沒有生效中(active)的用藥記錄。"
+    names = "、".join(m["display"] for m in medications)
+    return f"目前生效中的用藥:{names}。"
+
+
+def _render_observations(output: dict[str, Any]) -> str:
+    if not output.get("ok"):
+        return _NOT_FOUND_TEXT
+    observations = output.get("observations") or []
+    if not observations:
+        return "查無符合條件的觀察值記錄。"
+    parts = [
+        f"{o['display']}:{o['value_display'] or '無數值'}({o['effective_date'] or '日期未記錄'})"
+        for o in observations
+    ]
+    return "最近的觀察值:" + "、".join(parts) + "。"
+
+
+def _render_care_plans(output: dict[str, Any]) -> str:
+    if not output.get("ok"):
+        return _NOT_FOUND_TEXT
+    care_plans = output.get("care_plans") or []
+    if not care_plans:
+        return "目前沒有照護計畫記錄。"
+    parts = [
+        f"{cp['display']}({cp['status']},{cp['period_start'] or '?'} 起,"
+        f"活動:{'、'.join(cp['activities']) or '無'})"
+        for cp in care_plans
+    ]
+    return "照護計畫時間軸:" + "、".join(parts) + "。"
+
+
+_RENDERERS: dict[str, Any] = {
+    "get_patient_demographics": _render_demographics,
+    "list_active_conditions": _render_conditions,
+    "list_active_medications": _render_medications,
+    "get_recent_observations": _render_observations,
+    "get_care_plan_timeline": _render_care_plans,
+}
+
+
+class MockProvider:
+    """deterministic mock;``model_id`` 對應 configs/pricing.yaml 的 0 元項目。"""
+
+    def __init__(self, *, model_id: str = "mock-deterministic") -> None:
+        self.model_id = model_id
+
+    def start(
+        self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]
+    ) -> ProviderStep:
+        del system_prompt  # mock 不需要
+        tool_name = _select_tool(user_message)
+        call = RequestedToolCall(call_id="mock-call-1", tool_name=tool_name, arguments={})
+        return ProviderStep(
+            state=None,
+            tool_calls=(call,),
+            final_answer=None,
+            input_tokens=_estimate_tokens(user_message),
+            output_tokens=0,
+        )
+
+    def continue_with_tool_results(
+        self, state: Any, outcomes: Sequence[ToolCallOutcome]
+    ) -> ProviderStep:
+        del state
+        if not outcomes:
+            answer = "沒有可用的工具結果,無法回答。"
+        else:
+            outcome = outcomes[0]
+            renderer = _RENDERERS.get(outcome.tool_name)
+            answer = renderer(outcome.output) if renderer else "不支援的工具,無法回答。"
+        return ProviderStep(
+            state=None,
+            tool_calls=(),
+            final_answer=answer,
+            input_tokens=0,
+            output_tokens=_estimate_tokens(answer),
+        )

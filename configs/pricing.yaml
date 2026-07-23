@@ -1,0 +1,23 @@
+# 每 1M tokens 單價(USD)。PLAN.md §7 查證日期:2026-07-19,官方定價頁面。
+# 定價會漂移——上游改價時只改這裡,estimated_cost_usd 的計算程式不動。
+
+models:
+  mock-deterministic:
+    input_per_1m_usd: 0.0
+    output_per_1m_usd: 0.0
+
+  gemini-2.5-flash-lite:
+    # 仍是官方定價頁上列出的現行方案(2026-07-24 覆查),但這把金鑰打不到
+    # (見 models.yaml 的說明)——保留這筆單價供未來換回舊金鑰/帳號時使用。
+    input_per_1m_usd: 0.10
+    output_per_1m_usd: 0.40
+
+  gemini-3.1-flash-lite:
+    # 已驗證(2026-07-24,官方定價頁):目前實際在用的模型。
+    input_per_1m_usd: 0.25
+    output_per_1m_usd: 1.50
+
+  gpt-5.4-mini:
+    input_per_1m_usd: 0.75
+    output_per_1m_usd: 4.50
+    cached_input_per_1m_usd: 0.075

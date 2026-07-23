@@ -1,0 +1,31 @@
+{
+  "resourceType": "Bundle",
+  "type": "batch",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:d4000000-0000-0000-0000-000000000001",
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "d4000000-0000-0000-0000-000000000001",
+        "identifier": [
+          {
+            "system": "http://hl7.org/fhir/sid/us-npi",
+            "value": "9999999999"
+          }
+        ],
+        "name": [
+          {
+            "family": "Practitioner",
+            "given": ["Test"],
+            "prefix": ["Dr."]
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "url": "Practitioner",
+        "ifNoneExist": "identifier=http://hl7.org/fhir/sid/us-npi|9999999999"
+      }
+    }
+  ]
+}

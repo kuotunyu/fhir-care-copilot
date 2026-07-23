@@ -1,0 +1,29 @@
+# Provider -> 模型 id 對應。只改這裡,不改程式——上游改模型 id 時單點修改。
+# GeminiProvider/OpenAIProvider 的 model_id 由 providers/factory.py 從這裡讀入
+# (不是寫死在 class 裡),換模型只要改這個檔案。
+
+providers:
+  mock:
+    model_id: mock-deterministic
+    # CI 與離線開發預設 provider;不打任何外部 API。
+
+  gemini:
+    # 2026-07-19 查證時 gemini-2.5-flash-lite 是現行 GA 模型;2026-07-24 實測
+    # 發現該模型「對新使用者已下架」(呼叫回 404,即使 client.models.list()
+    # 仍列得出來)——這把金鑰打不到。改用目前世代的 flash-lite:
+    # gemini-3.1-flash-lite(已用同一把金鑰實測成功,PLAN.md §7 記錄此事件)。
+    model_id: gemini-3.1-flash-lite
+    sdk: google-genai
+    api_key_env: GEMINI_API_KEY
+    # 備用 key(429 quota failover,選配,見 PLAN.md §10 風險表)
+    backup_api_key_envs:
+      - GEMINI_API_KEY_BACKUP
+      - GEMINI_API_KEY_BACKUP2
+      - GEMINI_API_KEY_BACKUP3
+
+  openai:
+    model_id: gpt-5.4-mini
+    sdk: openai (Responses API)
+    api_key_env: OPENAI_API_KEY
+
+default_provider: mock
