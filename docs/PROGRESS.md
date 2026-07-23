@@ -6,6 +6,51 @@
 
 ---
 
+## 2026-07-24（續）— M4 完成 ✅（FastAPI + React 工作台，瀏覽器實測通過）
+
+**做了什麼**
+- 先驗證 PLAN.md §10 風險表懸而未決的一項：node v24.16.0 + `npm create vite` + `npm install` + `npm run build` 在這個含中文與空格的路徑上全部正常，無需比照 Python 改路徑或搬 WSL2
+- FastAPI 後端（`src/fhir_copilot/api/`）：`dependencies.py`（store/provider/pricing/guardrails 的 `lru_cache` 單例；provider 選擇邏輯——`FHIR_COPILOT_PROVIDER` env var 優先，沒設用 configs 的 default，選到的 provider 缺金鑰時自動退回 mock demo mode）；6 個 endpoint(`/api/health`、`/api/patients`、`/api/patients/{id}/summary`、`/api/chat`、`/api/care-notes/propose`、`/api/care-notes/confirm`、`/api/providers`）；`app.py` 用 `StaticFiles(html=True)` 掛 `app/dist`，同一個 process 同一個 port serve 前端與 API
+- React + Vite + TypeScript 工作台（`app/`）：病患選擇器(搜尋)、病歷時間軸(診斷/用藥/觀察值/照護計畫 4 個分頁)、個案問答(含證據抽屜、cost/latency badge、拒答狀態、Enter 送出/Shift+Enter 換行)。設計語彙「溫暖病歷夾」:奶油紙色背景 + 深松石綠主色 + 赤陶橘互動強調色,紅色只保留給拒答/錯誤;Fraunces 襯線標題 + Work Sans 內文 + JetBrains Mono 數字;支援亮/暗色主題
+- 用 Claude Browser 對**真實跑起來的 server**(不只 TestClient)做端到端驗證:vite dev(5173,proxy 到本機 8000)與 FastAPI 直接 serve production build(8000 單一 process)兩種模式都測過;100 位真實病患資料全部正確渲染;點選病患→切換時間軸分頁→送出聊天問題→看到證據抽屜(5 筆 Condition evidence)與 cost badge→切換病患後對話重置,全部手動走過一輪;縮到手機寬度(375px)確認無橫向溢位;全程 0 個 console error
+- `tests/test_api.py`(9 個 FastAPI 路由整合測試,用 fixture 資料 + mock provider,不碰真實 100 位病患資料集)
+
+**真實測試輸出**
+```
+uv run pytest         → 89 passed in 1.66s
+uv run mypy            → Success: no issues found in 49 source files
+uv run ruff check .    → All checks passed!
+
+# 前端
+npm run build          → tsc -b && vite build 成功(dist/index.html 1.02kB、js 203kB gzip 64kB)
+npm run lint            → oxlint,exit 0,無輸出(乾淨)
+
+# 真實 server 驗證(curl)
+GET /api/health         → {"status":"ok","provider":"mock","model_id":"mock-deterministic",
+                            "demo_mode":true,"patient_count":100}
+GET /                   → 200,回傳 app/dist/index.html(FastAPI 直接 serve production build)
+
+# 瀏覽器實測(vite dev,對真實 100 位病患資料):
+問「他目前有哪些生效中的診斷?」(病患 Aaron697 Brekke496)
+→ 答:「目前生效中的診斷:Cardiac Arrest、History of cardiac arrest (situation)、
+   Body mass index 30+ - obesity...」
+→ 證據抽屜:5 筆 Condition/<id> clinicalStatus=active
+→ status badge:mock-deterministic · 0 ms · 3→33 tok · US$0.00000
+切換病患(Abby752 Kuvalis369)→ 時間軸即時更新,診斷分頁正確顯示「目前沒有生效中的診斷記錄」
+```
+
+**決策 / 發現**
+- `propose_care_note` 的 UI 確認流程(草稿→按鈕確認→寫 audit log)**這次沒做前端**——PLAN.md M4 的 UI 元件清單(病患選擇器/時間軸/對話區/證據抽屜/cost badge/拒答狀態)本來就沒列這塊;後端 API(`/api/care-notes/propose`、`/api/care-notes/confirm`)已完成並測試,前端草稿確認 UI 列為之後的加分項,不擋 M4 完工
+- provider 選擇的「無金鑰自動退回 mock」邏輯提前在 M4 做了(`dependencies.py:resolve_provider_name`),原本是 PLAN.md M7(HF Space)才規劃的行為——因為 API 層本來就需要這個邏輯來決定要不要真的建立 Gemini/OpenAI client,提前做掉比屆時再回頭改動更自然
+- Browser 工具的 `read_page` 在病患清單有 100 個選項時,`filter=interactive` 會在掃到主要清單後就不再往聊天面板等後面的區塊走(可能是元素數量上限而非字元數上限造成)——之後遇到長清單頁面,改用 `filter=all` + `ref_id` 指定子樹或 `offset` 分頁讀取比較可靠
+
+**下一步**
+- M5:Eval harness——從 FHIR 結構自動產 ≥200 題、跑 tool-selection/citation/refusal 等指標、預算守門($5 上限)
+- M4 的 care-note 草稿確認 UI 如果之後要補,是很小的一塊(propose 按鈕 + 顯示草稿 + 確認按鈕),API 都已經在
+- commit 這次 M4 的所有變更(app/ 前端 + src/fhir_copilot/api/ 後端 + 相關設定檔)
+
+---
+
 ## 2026-07-24 — M1 收尾 + M2 + M3 完成 ✅（含真實 Gemini/OpenAI 端到端測試）
 
 **背景**：使用者授權整晚自主開工（只交代不 push、GitHub Contributors 保持乾淨）。session 中途從 Fable 5 切到 Sonnet 5（額度問題），不影響進度。M1/M2 分別跑了 21-agent 與 16-agent 多視角審查（含直接對真實下載的 100 位病患資料寫探針驗證），M3 做了 agent loop + 三個 provider + 兩次真實 API 端到端測試。

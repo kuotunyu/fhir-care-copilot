@@ -1,0 +1,194 @@
+/* FHIR Care Copilot ── 「溫暖病歷夾」設計語彙:
+   紙本病歷的溫度(奶油紙色、襯線標題)+ 現代臨床工具的清晰資訊層級。
+   紅色只保留給拒答/警示狀態,其餘一律用深松石綠與赤陶橘。 */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f6f1e7;
+  --paper-raised: #fffdf8;
+  --paper-sunken: #efe8d8;
+  --ink: #1d2a28;
+  --ink-muted: #5b6b67;
+  --ink-faint: #8a978f;
+
+  --teal: #1f5c4f;
+  --teal-deep: #123c33;
+  --teal-tint: #e2ede9;
+
+  --terracotta: #b5613f;
+  --terracotta-tint: #f4e4d8;
+
+  --amber: #9c7620;
+  --amber-tint: #f1e6c9;
+
+  --red: #a23b2e;
+  --red-tint: #f6e3df;
+
+  --border: #ddd3bd;
+  --border-strong: #c9bc9d;
+  --shadow-soft: 0 1px 2px rgba(29, 42, 40, 0.06), 0 6px 20px -8px rgba(29, 42, 40, 0.18);
+  --shadow-lift: 0 12px 32px -12px rgba(29, 42, 40, 0.3);
+
+  --font-display: 'Fraunces', 'Noto Serif TC', serif;
+  --font-body: 'Work Sans', 'Noto Sans TC', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14201d;
+    --paper-raised: #1b2926;
+    --paper-sunken: #0f1815;
+    --ink: #ede7d8;
+    --ink-muted: #a9b7b1;
+    --ink-faint: #718079;
+
+    --teal: #6fb8a4;
+    --teal-deep: #8fcdba;
+    --teal-tint: #1f3a34;
+
+    --terracotta: #e0987a;
+    --terracotta-tint: #3a2a22;
+
+    --amber: #d9b866;
+    --amber-tint: #362e18;
+
+    --red: #e5877a;
+    --red-tint: #3c211d;
+
+    --border: #2c3a36;
+    --border-strong: #3d4d47;
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px -8px rgba(0, 0, 0, 0.5);
+    --shadow-lift: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #14201d;
+  --paper-raised: #1b2926;
+  --paper-sunken: #0f1815;
+  --ink: #ede7d8;
+  --ink-muted: #a9b7b1;
+  --ink-faint: #718079;
+  --teal: #6fb8a4;
+  --teal-deep: #8fcdba;
+  --teal-tint: #1f3a34;
+  --terracotta: #e0987a;
+  --terracotta-tint: #3a2a22;
+  --amber: #d9b866;
+  --amber-tint: #362e18;
+  --red: #e5877a;
+  --red-tint: #3c211d;
+  --border: #2c3a36;
+  --border-strong: #3d4d47;
+}
+
+:root[data-theme='light'] {
+  --paper: #f6f1e7;
+  --paper-raised: #fffdf8;
+  --paper-sunken: #efe8d8;
+  --ink: #1d2a28;
+  --ink-muted: #5b6b67;
+  --ink-faint: #8a978f;
+  --teal: #1f5c4f;
+  --teal-deep: #123c33;
+  --teal-tint: #e2ede9;
+  --terracotta: #b5613f;
+  --terracotta-tint: #f4e4d8;
+  --amber: #9c7620;
+  --amber-tint: #f1e6c9;
+  --red: #a23b2e;
+  --red-tint: #f6e3df;
+  --border: #ddd3bd;
+  --border-strong: #c9bc9d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(circle at 18% -8%, rgba(31, 92, 79, 0.08), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(181, 97, 63, 0.07), transparent 38%);
+  background-attachment: fixed;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--teal);
+  color: var(--paper-raised);
+}
+
+/* 統一鍵盤 focus 樣式:清楚可見,不用瀏覽器預設的方框 */
+:focus-visible {
+  outline: 2.5px solid var(--terracotta);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+a {
+  color: var(--teal);
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* 捲軸(webkit) — 呼應紙感 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--paper);
+}

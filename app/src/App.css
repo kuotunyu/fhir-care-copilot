@@ -1,0 +1,683 @@
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ---------- 頁首 ---------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper-raised);
+  flex-wrap: wrap;
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.app-header__mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--teal);
+  color: var(--paper-raised);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+  flex-shrink: 0;
+}
+
+.app-header h1 {
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.app-header__tagline {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.01em;
+}
+
+.app-header__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.demo-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--amber-tint);
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+}
+
+.provider-pill {
+  font-size: 11.5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+  border: 1px solid color-mix(in srgb, var(--teal) 25%, transparent);
+}
+
+/* ---------- 主要三欄版面 ---------- */
+
+.app-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 264px minmax(320px, 1fr) minmax(340px, 420px);
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.app-main > section {
+  background: var(--paper);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+@media (max-width: 1080px) {
+  .app-main {
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .chat-panel {
+    grid-column: 1 / -1;
+    max-height: 480px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-main {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .patient-rail,
+  .chart-panel,
+  .chat-panel {
+    max-height: none;
+  }
+}
+
+/* ---------- 病患選擇器 ---------- */
+
+.patient-rail {
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.patient-rail__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.patient-rail__header h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  font-family: var(--font-body);
+  font-weight: 700;
+}
+
+.patient-rail__count {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.patient-rail__search input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.patient-rail__search input:focus-visible {
+  border-color: var(--terracotta);
+}
+
+.patient-rail__empty,
+.chart-panel__empty {
+  color: var(--ink-faint);
+  font-size: 13.5px;
+  padding: 24px 4px;
+  text-align: center;
+}
+
+.chart-panel__empty--error {
+  color: var(--red);
+}
+
+.patient-rail__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.patient-rail__list li {
+  animation: rise-in 320ms ease backwards;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.patient-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.patient-card:hover {
+  background: var(--paper-raised);
+}
+
+.patient-card.is-selected {
+  background: var(--teal-tint);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+}
+
+.patient-card__avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--paper-sunken);
+  color: var(--teal-deep);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.patient-card.is-selected .patient-card__avatar {
+  background: var(--teal);
+  color: var(--paper-raised);
+}
+
+.patient-card__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.patient-card__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patient-card__sub {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+/* ---------- 病歷時間軸 ---------- */
+
+.chart-panel {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chart-panel__header h2 {
+  font-size: 24px;
+}
+
+.chart-panel__subline {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.chart-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.chart-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.chart-tab.is-active {
+  color: var(--teal-deep);
+  border-bottom-color: var(--teal);
+}
+
+.chart-tab__count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--paper-sunken);
+  color: var(--ink-faint);
+}
+
+.chart-tab.is-active .chart-tab__count {
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+}
+
+.chart-panel__body {
+  flex: 1;
+}
+
+.record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.record-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--paper-sunken);
+}
+
+.record-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+
+.record-row__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.record-row__value {
+  font-weight: 500;
+  color: var(--teal-deep);
+}
+
+.record-row__meta {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.record-row__activities {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.status-chip {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.status-chip--active {
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+}
+
+.status-chip--closed {
+  background: var(--paper-sunken);
+  color: var(--ink-faint);
+}
+
+/* ---------- 聊天面板 ---------- */
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+}
+
+.chat-panel__header {
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-panel__header h2 {
+  font-size: 17px;
+}
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-log__hint {
+  color: var(--ink-faint);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: rise-in 220ms ease;
+}
+
+.chat-bubble {
+  max-width: 92%;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13.8px;
+  line-height: 1.55;
+}
+
+.chat-bubble--question {
+  align-self: flex-end;
+  background: var(--teal);
+  color: var(--paper-raised);
+  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble--answer {
+  align-self: flex-start;
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  color: var(--ink);
+}
+
+.chat-bubble--refused {
+  background: var(--red-tint);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.chat-bubble--error {
+  background: var(--red-tint);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.refusal-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, var(--paper-raised));
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+
+.chat-bubble__text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-bubble__limitations {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.chat-bubble__footer {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  flex-wrap: wrap;
+}
+
+.status-badge__divider {
+  opacity: 0.5;
+}
+
+.thinking-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) {
+  animation-delay: 150ms;
+}
+.thinking-dot:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.evidence-drawer {
+  font-size: 12px;
+}
+
+.evidence-drawer summary {
+  cursor: pointer;
+  color: var(--teal-deep);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+}
+
+.evidence-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.evidence-drawer summary::before {
+  content: '▸';
+  display: inline-block;
+  transition: transform 140ms ease;
+  font-size: 10px;
+}
+
+.evidence-drawer[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.evidence-drawer__count {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+}
+
+.evidence-drawer__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.evidence-item {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+
+.evidence-item__resource {
+  color: var(--terracotta);
+  font-weight: 600;
+}
+
+.evidence-item__field {
+  color: var(--ink-muted);
+}
+
+.chat-composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--paper-raised);
+}
+
+.chat-composer textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.chat-composer textarea:focus-visible {
+  border-color: var(--terracotta);
+}
+
+.btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.btn--primary {
+  background: var(--teal);
+  color: var(--paper-raised);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 頁尾 ---------- */
+
+.app-footer {
+  padding: 12px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--paper-raised);
+}
+
+.app-footer p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.app-footer strong {
+  color: var(--red);
+}

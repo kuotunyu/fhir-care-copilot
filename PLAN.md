@@ -1,6 +1,6 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0/M1/M2/M3 完成（2026-07-24），下一步 M4 API + 前端工作台
+> **狀態**：M0/M1/M2/M3/M4 完成（2026-07-24），下一步 M5 Eval harness
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -37,9 +37,9 @@
   回應契約（見 §5）；mock provider（deterministic、CI 不需金鑰）；agent loop 護欄：max tool rounds、timeout、輸入長度上限、工具 allowlist（write 類工具不存在於 loop）；Gemini adapter（`google-genai`、手動 function calling、`automatic_function_calling.disable=True`；model id 走 config，見下方「模型現況變化」）；OpenAI adapter（Responses API；模型 id 走 config 不寫死）；`propose_care_note` 草稿 + `confirm_and_log` 確認後寫本地 audit log JSONL（**刻意不進入**唯讀 agent loop 的工具清單，見 ADR 0001）；token 用量與成本計算（單價放 `configs/pricing.yaml`，不寫死在程式）；病患範圍由 loop 直接注入工具呼叫、LLM 無法透過參數竄改（見 ADR 0003）。
   **驗收**：mock provider 全流程測試綠（80 個測試）；Gemini 與 OpenAI 皆真跑並回報真實輸出（見下方「模型現況變化」與 PROGRESS.md）。
   ⚠️ **模型現況變化**（2026-07-24 實測發現）：`gemini-2.5-flash-lite`（§7 查證時的預設模型）對這把金鑰的帳號回傳 404「對新使用者已下架」，即使 `client.models.list()` 仍列得出來。改用同世代目前可用的 `gemini-3.1-flash-lite`（已用同一把金鑰實測成功），定價 $0.25 input / $1.50 output per 1M tokens（原模型 $0.10/$0.40 仍保留在 pricing.yaml 供之後換帳號時使用）。教訓：模型可用性會因 API 金鑰/帳號的新舊而異，不是只看官方文件列不列出來就準。
-- [ ] **M4 — API + 前端工作台**
-  FastAPI endpoints：病患清單、timeline、chat、care-note confirm、health/mode。React + Vite 工作台：病患選擇器、時間軸、對話區、證據抽屜、cost/latency badge、拒答狀態；**正體中文 UI（專有名詞保留原文）**、鍵盤可操作、手機可瀏覽；`vite build` 靜態檔由 FastAPI serve（單一 container）。
-  **驗收**：一行指令本機啟動；90 秒 demo 路徑手動走通；基本 e2e smoke。
+- [x] **M4 — API + 前端工作台**（2026-07-24 完成）
+  FastAPI endpoints：病患清單、summary(timeline)、chat、care-note propose/confirm、health、providers。React + Vite 工作台：病患選擇器（搜尋）、時間軸（診斷/用藥/觀察值/照護計畫分頁）、對話區、證據抽屜、cost/latency badge、拒答狀態；**正體中文 UI（專有名詞保留原文）**、鍵盤可操作（`:focus-visible`、原生 `<details>`/表單語意）、手機可瀏覽（已實測 375px 寬無橫向溢位）；`vite build` 靜態檔由 FastAPI serve（同一 process、同一 port）。設計語彙:「溫暖病歷夾」(奶油紙色 + 深松石綠 + 赤陶橘,紅色保留給拒答/錯誤)。
+  **驗收**：`just run` 一行指令啟動；90 秒 demo 路徑已用瀏覽器對真實 100 位病患資料實測走通（選病患→看時間軸→問問題→看證據抽屜與 cost badge→切換病患）；FastAPI 直接 serve production build 與 vite dev proxy 兩種模式都驗證過；89 個後端測試 + oxlint 皆綠。
 - [ ] **M5 — Eval harness**
   從 FHIR 結構自動產生 ≥200 筆有 deterministic 標準答案的 cases（不人工標註），題型：藥物、疾病、最近量測、時間順序、不可回答、prompt injection。指標：tool-selection accuracy、field exact match、citation validity、unsupported-claim rate、refusal accuracy、p50/p95 latency、平均成本。預算守門：預設 $5 上限、跑前估算、超過即停並提示。CI 以 mock provider 跑 eval。
   **驗收**：mock 全量 eval 跑通並輸出全部指標。
@@ -180,7 +180,7 @@ data/raw、data/processed   # gitignored
 
 | 風險 | 影響 | 對策 |
 |---|---|---|
-| 專案路徑含中文與空格 | uv/node/docker 可能踩雷 | **M0 已實測**：Python 3.11/3.12 的 `.pth` cp950 問題 → 改用 3.13 解決（ADR 0002）；pre-commit 設定檔需 ASCII-only；node（M4）與 docker（M7）屆時再實測 |
+| 專案路徑含中文與空格 | uv/node/docker 可能踩雷 | **M0 已實測**：Python 3.11/3.12 的 `.pth` cp950 問題 → 改用 3.13 解決（ADR 0002）；pre-commit 設定檔需 ASCII-only。**M4 已實測**：node v24.16.0 + npm create vite + npm install + npm run build 全部正常，中文路徑無影響。docker（M7）待實測 |
 | 模型 id / 定價漂移 | 成本估算失準、呼叫失敗 | 全放 `configs/`，不寫死 |
 | Gemini free tier quota | eval 中斷 | 有 3 組 backup key；選配 429 failover（非核心） |
 | sep2019 樣本較舊（pre-v3.4.0） | 欄位慣例與新版不同 | parser 同時支援新舊慣例；fixture 兩種都涵蓋 |
