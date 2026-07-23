@@ -6,6 +6,50 @@
 
 ---
 
+## 2026-07-24（續之四）— M7 完成 ✅（打包與發布準備；docker build 現場驗證受阻，已用等效方式驗證並誠實記錄）
+
+**做了什麼**
+- `LICENSE`（Apache-2.0 全文）、`CITATION.cff`（機器可讀引用，preferred-citation 指向 Synthea JAMIA 論文）
+- `MODEL_CARD.md`：系統概覽、預期/非預期用途、真實 eval 結果表(從 M6 數字整理)、已知限制、安全設計摘要
+- `DATA_CARD.md`：Synthea 資料來源與授權、FHIR bundle 結構、已查證的資料版本差異與瑕疵表、隱私聲明、已知限制
+- `scripts/publish_to_hf.py`：預設 dry-run(不需金鑰、不呼叫任何 HF API)，`--execute` 才真的發布(需要 `HF_TOKEN`)；用 `HfApi.create_repo`/`upload_folder`/`add_space_secret`；README 發布時另組 HF Space 要求的 front-matter(`sdk: docker`/`app_port`)接在專案 README 內容前面，避免兩份 README 分岔維護；新增 `huggingface_hub` 為 dev 依賴(只有這個 script 用得到，不進 runtime 依賴)
+- `tests/test_publish_to_hf.py`：8 個新測試(dry-run 行為、secret 值不外洩到 log、`--set-secret` 格式驗證、README front-matter 組合、缺 README 時提前失敗不呼叫任何網路)
+- `Dockerfile`(multi-stage:node build → python:3.13-slim runtime,UID 1000)、`docker-compose.yml`、`.dockerignore`
+- README.md 改寫成完整版:90 秒 demo 步驟、Mermaid 架構圖、安全邊界對照表、5 個工具說明、真實 eval 結果表(附兩個已知限制的註解)、成本、技術棧、開發/Docker/發布指令、面試談法五點、已知限制
+
+**真實測試輸出**
+```
+uv run pytest → 128 passed in 1.73s(120 舊 + 8 個新 publish_to_hf 測試)
+uv run ruff check .  → All checks passed!
+uv run mypy .        → Success: no issues found in 61 source files
+uv run python scripts/publish_to_hf.py --repo-id kuotunyu/fhir-care-copilot --set-secret GEMINI_API_KEY=dummy
+  → dry-run 正常印出 repo_id/ignore patterns/secret 名稱(不印值),exit 0,未觸網
+```
+
+**中途發現並修正一個真實的 Dockerfile bug**:原本的 layer 順序是 `COPY pyproject.toml uv.lock` → `RUN uv sync --locked --no-dev` → 才 `COPY src/`。但 `pyproject.toml` 有 `readme = "README.md"`,且 hatchling 需要讀到 `src/fhir_copilot/` 才能把本專案自己 build 成 wheel——用臨時目錄重現(只放 pyproject.toml + uv.lock)後 `uv sync --locked --no-dev` **真的失敗**:`OSError: Readme file does not exist: README.md`。修正:把 `README.md` 與 `src/` 提前到 `uv sync` 之前一起複製。修正後用臨時目錄完整重現一次,`uv sync` 成功。
+
+**docker build 本機現場驗證受阻(誠實記錄,不宣稱已完整驗證)**
+- 本機 Docker Desktop 4.80.0 的 backend 每次啟動都在 2 秒內 crash,錯誤是 `starting services: initializing Inference manager: listening on unix://...\Docker\run\dockerInference: remove ...: The file cannot be accessed by the system.`,清掉這個殘留 socket 檔案後下一次啟動換成 `docker-secrets-engine\engine.sock` 用同樣方式壞掉,清掉後再重啟又跳回第一個——反覆循環
+- 查證：`%LOCALAPPDATA%` 底下留有多個更早(7/17、7/18)的同類殘留資料夾(`docker-secrets-engine_zombie`、`run_stale_20260717` 等),證實這是**這台機器已存在多天的環境問題**,不是本專案造成的;`Get-MpComputerStatus` 確認 Windows Defender 即時防護是開著的,懷疑是即時掃描鎖住剛建立的 AF_UNIX socket reparse point 導致——但修改防毒/系統設定不在本次自主執行的授權範圍內(硬規則:不修改系統或安全性設定),沒有進一步處理
+- **改用能力範圍內最貼近的等效驗證**:用臨時目錄完整重現 Dockerfile 的檔案佈局(`pyproject.toml`/`uv.lock`/`README.md`/`src/`/`configs/`),`uv sync --locked --no-dev` 成功;以 `FHIR_COPILOT_PROVIDER=mock`(等同容器內沒填金鑰時的自動退回路徑)+ `FHIR_COPILOT_DATA_DIR` 指向 committed 的 2 位 fixture 病患啟動 `uvicorn`,實測:
+  - `GET /api/health` → `{"status":"ok","provider":"mock","model_id":"mock-deterministic","demo_mode":true,"patient_count":2}`
+  - `GET /api/patients` → 正確列出 2 位 fixture 病患
+  - `POST /api/chat`(問「這位病患目前在吃什麼藥？」)→ 正確回答並附 `MedicationRequest` evidence,`refused:false`
+- 這證明 Dockerfile 修正後的依賴安裝與應用程式邏輯是正確的,但**真正的 `docker build`/`docker compose up` image 建置本身尚未經過現場驗證**——這是誠實記錄的已知限制,已寫入 PLAN.md §3/§10,不宣稱「Docker 已完整可用」
+
+**決策 / 發現**
+- 遇到「動作有沒有做完」的不確定性時,選擇誠實記錄「受阻+已用什麼方式盡力驗證」,而不是略過不提或假裝驗證過——與專案「不宣稱未量測的準確率」的原則一致,同樣適用於「有沒有真的跑過建置」這件事
+- 這次意外在等效驗證過程中抓到一個真實的 Dockerfile bug(layer 順序),證明「盡力用替代方式驗證」比「因為主要驗證方式不可用就跳過」更有價值
+- HF Docker Space 的實際部署環境是全新的 Linux runner,不會有這台機器 AppData 底下的殘留檔案問題,本機這個環境問題預期不影響最終部署,但仍需要在乾淨環境(或使用者本機修好 Docker Desktop 後)跑一次真正的 `docker build` 才能完全確認
+
+**下一步(留給使用者)**
+- 使用者本機環境:Docker Desktop 反覆 crash-loop 的問題已記錄在 PLAN.md §3 M7 與 §10 風險表,可能需要重灌 Docker Desktop,或暫時停用即時防護測試是否為防毒鎖檔導致(這類系統/安全性設定變更超出本次自主執行範圍,留給使用者判斷)
+- Docker Desktop 修好後:`docker build -t fhir-care-copilot .` 驗證真正的 image 建置、`docker compose up` 驗證完整啟動流程與 port 對應
+- 之後若要發布到 HF Space:`uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --execute`(需要 `HF_TOKEN`)
+- 所有 M0–M7 milestone 至此皆已完成;若要繼續,可考慮:補齊 90 秒 demo 的實際截圖(README 目前是 placeholder)、跑完整 220 題雙模型全量比較(目前只有各 30 題小樣本)
+
+---
+
 ## 2026-07-24（續之三）— M6 完成 ✅（真實對 Gemini 與 OpenAI 各跑 30 題，發現並修正判準 bug）
 
 **做了什麼**
