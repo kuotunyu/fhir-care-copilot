@@ -43,6 +43,12 @@ def main() -> None:
         "--sample-per-category", type=int, default=6, help="小樣本模式每個題型的題數(預設 6)"
     )
     parser.add_argument("--budget-usd", type=float, default=5.0, help="預算上限,美元(預設 5)")
+    parser.add_argument(
+        "--pace-seconds",
+        type=float,
+        default=0.0,
+        help="每題之間的延遲秒數(打真實 API 時用,避免撞到速率限制;預設不 pace)",
+    )
     parser.add_argument("--out", default=str(REPO_ROOT / "reports" / "eval_results.json"))
     args = parser.parse_args()
 
@@ -82,6 +88,7 @@ def main() -> None:
             guardrails=guardrails,
             pricing=pricing,
             budget_usd=args.budget_usd,
+            pace_seconds=args.pace_seconds,
         )
     except BudgetExceededError as exc:
         print(f"預算超限,中止,沒有花任何錢:{exc}", file=sys.stderr)

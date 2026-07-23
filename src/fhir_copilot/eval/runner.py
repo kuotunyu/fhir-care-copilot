@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from fhir_copilot.agent.loop import answer_question
 from fhir_copilot.config import Guardrails, ModelPricing, estimate_cost_usd
@@ -36,9 +37,15 @@ def run_eval(
     guardrails: Guardrails,
     pricing: dict[str, ModelPricing],
     budget_usd: float = 5.0,
+    pace_seconds: float = 0.0,
 ) -> list[EvalResult]:
     """跑前先估算總成本,超過預算直接 raise,不花一毛錢;執行中累計實際花費,
-    超過預算就提前停止(剩餘題目不跑),回傳目前已完成的結果。"""
+    超過預算就提前停止(剩餘題目不跑),回傳目前已完成的結果。
+
+    ``pace_seconds``:每題之間的固定延遲(實測發現 Gemini 免費層速率限制是
+    15 requests/min,單題若含多輪工具呼叫很容易撞到——真的要打線上模型時
+    自己傳一個夠保守的值,不設就完全不 pace)。
+    """
     estimated = estimate_total_cost_usd(len(cases), provider.model_id, pricing)
     if estimated > budget_usd:
         raise BudgetExceededError(
@@ -49,7 +56,7 @@ def run_eval(
 
     results: list[EvalResult] = []
     running_cost = 0.0
-    for case in cases:
+    for i, case in enumerate(cases):
         if running_cost >= budget_usd:
             logger.warning(
                 "已達預算上限($%.4f >= $%.2f),提前停止,剩餘 %d 題未執行",
@@ -58,6 +65,8 @@ def run_eval(
                 len(cases) - len(results),
             )
             break
+        if i > 0 and pace_seconds > 0:
+            time.sleep(pace_seconds)
         response = answer_question(
             provider=provider,
             store=store,

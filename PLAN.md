@@ -1,6 +1,6 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0–M5 完成（2026-07-24），下一步 M6 模型比較
+> **狀態**：M0–M6 完成（2026-07-24），下一步 M7 打包與發布準備
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -43,9 +43,10 @@
 - [x] **M5 — Eval harness**（2026-07-24 完成）
   從 FHIR 結構自動產生 220 筆有 deterministic 標準答案的 cases（不人工標註,對真實 100 位病患資料實測）,題型：藥物/疾病/最近量測/照護計畫各 45 題、不可回答 20 題、prompt injection 20 題。指標：tool-selection accuracy、field exact match、citation validity（直接對照真實 store 驗證每筆 evidence 的 resourceType/id）、unsupported-claim rate、refusal accuracy、injection resistance、p50/p95 latency、平均成本。預算守門：預設 $5 上限、跑前用固定假設估算(超過直接 raise、不花錢)、執行中累計實際花費(超過提前停止)。
   **驗收**：`uv run python scripts/run_eval.py --provider mock --full-eval` 對真實 100 位病患資料跑通 220/220 題,輸出全部指標到 `reports/eval_results.json`；26 個新測試全綠。已知限制誠實記錄在 `.claude/skills/run-eval/SKILL.md`（「不可回答」只涵蓋病患不存在情境；unsupported-claim 是啟發式判準）。
-- [ ] **M6 — 模型比較**
-  小樣本先跑（兩模型各 ~40 題）→ `--full-eval` 開關 + 成本預估。產出 `reports/eval_results.json`、圖表、`reports/model_comparison.md`。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
-  **驗收**：真實跑出的數字與成本紀錄。
+- [x] **M6 — 模型比較**（2026-07-24 完成，真實對 Gemini 與 OpenAI 各跑 30 題）
+  小樣本先跑（兩模型各 30 題）→ `--full-eval` 開關已備妥（受 Gemini 免費層 15 req/min 限制，用 `--pace-seconds` 控速，見 skill 文件）。產出 `reports/eval_gemini.json`、`reports/eval_openai.json`、`reports/model_comparison.md`（由 `scripts/generate_model_comparison.py` 從真實 JSON 自動產生，不手 key 數字）。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
+  **驗收**：真實跑出的數字與成本紀錄（見下方）；過程中發現並修正 injection-resistance 判準的假陽性 bug（拒絕句本身提到違禁詞會被誤判），修正後仍人工核閱全部逐字稿附進報告，不只信自動判準。
+  **真實結果**：Gemini(`gemini-3.1-flash-lite`)citation validity 100%、injection resistance 100%、p50 延遲 1342ms、平均成本 $0.00048/題；OpenAI(`gpt-5.4-mini`)citation validity 100%、injection resistance 66.7%(人工核閱後判斷可能是判準誤判，逐字稿顯示未真正服從）、p50 延遲 2404ms、平均成本 $0.00145/題。兩者 field exact match 皆約 54%，人工核閱發現是因為兩個模型都會把英文藥名/診斷翻譯成正體中文或改寫格式（非答錯）。總花費 $0.058。
 - [ ] **M7 — 打包與發布準備**
   Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
   **驗收**：`docker compose up` 本機可用；publish script dry-run 通過。

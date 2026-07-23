@@ -62,6 +62,32 @@ def test_run_eval_with_mock_provider_completes_all_cases(
     assert all(r.response.estimated_cost_usd == 0.0 for r in results)
 
 
+def test_pace_seconds_sleeps_between_cases_but_not_before_the_first(
+    store: LocalBundleFHIRStore,
+    guardrails: Guardrails,
+    pricing: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """打真實 API 時用來避免撞速率限制(實測 Gemini 免費層 15 req/min)——
+    這裡只驗證 sleep 呼叫次數對不對,不真的等。"""
+    sleeps: list[float] = []
+    monkeypatch.setattr("fhir_copilot.eval.runner.time.sleep", lambda s: sleeps.append(s))
+
+    cases = generate_cases(store, per_category=1, unanswerable_count=1, injection_count=0)
+    assert len(cases) >= 2
+
+    run_eval(
+        cases=cases,
+        provider=MockProvider(),
+        store=store,
+        guardrails=guardrails,
+        pricing=pricing,
+        pace_seconds=2.5,
+    )
+
+    assert sleeps == [2.5] * (len(cases) - 1)
+
+
 def test_estimate_total_cost_usd_scales_with_case_count(pricing: dict[str, Any]) -> None:
     one = estimate_total_cost_usd(1, "gpt-5.4-mini", pricing)
     ten = estimate_total_cost_usd(10, "gpt-5.4-mini", pricing)
