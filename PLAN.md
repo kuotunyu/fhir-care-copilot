@@ -1,6 +1,6 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0–M6 完成（2026-07-24），下一步 M7 打包與發布準備
+> **狀態**：M0–M7 完成（2026-07-24，M7 的 `docker build` 現場驗證因本機 Docker Desktop 環境問題受阻，已用等效方式驗證，詳見 §3 M7 與 PROGRESS.md）
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -47,9 +47,16 @@
   小樣本先跑（兩模型各 30 題）→ `--full-eval` 開關已備妥（受 Gemini 免費層 15 req/min 限制，用 `--pace-seconds` 控速，見 skill 文件）。產出 `reports/eval_gemini.json`、`reports/eval_openai.json`、`reports/model_comparison.md`（由 `scripts/generate_model_comparison.py` 從真實 JSON 自動產生，不手 key 數字）。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
   **驗收**：真實跑出的數字與成本紀錄（見下方）；過程中發現並修正 injection-resistance 判準的假陽性 bug（拒絕句本身提到違禁詞會被誤判），修正後仍人工核閱全部逐字稿附進報告，不只信自動判準。
   **真實結果**：Gemini(`gemini-3.1-flash-lite`)citation validity 100%、injection resistance 100%、p50 延遲 1342ms、平均成本 $0.00048/題；OpenAI(`gpt-5.4-mini`)citation validity 100%、injection resistance 66.7%(人工核閱後判斷可能是判準誤判，逐字稿顯示未真正服從）、p50 延遲 2404ms、平均成本 $0.00145/題。兩者 field exact match 皆約 54%，人工核閱發現是因為兩個模型都會把英文藥名/診斷翻譯成正體中文或改寫格式（非答錯）。總花費 $0.058。
-- [ ] **M7 — 打包與發布準備**
-  Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
-  **驗收**：`docker compose up` 本機可用；publish script dry-run 通過。
+- [x] **M7 — 打包與發布準備**（2026-07-24 完成，`docker build` 現場驗證受阻，已用等效方式驗證，見下方說明）
+  Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml、`.dockerignore`；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**，8 個新測試）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
+  **驗收現況**：
+  - `uv run pytest`（128 通過）、`ruff check .`、`mypy .` 全綠
+  - `publish_to_hf.py` dry-run 實測通過（不需金鑰、不呼叫任何 HF API）
+  - ⚠️ **`docker build`/`docker compose up` 本機現場驗證受阻**：本機 Docker Desktop 4.80.0 的 backend 在啟動時因為 AppData 底下多個 AF_UNIX socket 檔案（`Docker\run\dockerInference`、`docker-secrets-engine\engine.sock`）反覆變成無法存取（Windows error 1920）而 crash-loop——查證發現這是這台機器上**已存在多天的環境問題**（`%LOCALAPPDATA%` 下留有 7/17～7/18 的同類殘留資料夾），不是本專案程式碼造成的。嘗試清掉殘留 socket 檔案後仍在下一次啟動重新卡住，判斷可能與即時防毒掃描鎖定新建立的 socket reparse point 有關；由於修改防毒/系統設定超出本次自主執行的授權範圍，未進一步處理，留給使用者之後排查(可能需要 Docker Desktop 重灌或短暫停用即時防護測試)。
+  - **等效驗證**（因為 Docker daemon 起不來，改用能力範圍內最貼近的方式驗證 Dockerfile 的邏輯正確性）：
+    1. 靜態複查時發現一個真實 bug——原本的 layer 順序是先 `COPY pyproject.toml uv.lock` 再 `RUN uv sync`，但 `pyproject.toml` 的 `[project]` 有 `readme = "README.md"` 且 hatchling 需要 `src/fhir_copilot/` 才能把本專案自己 build 成套件；用臨時目錄重現(只放 pyproject.toml + uv.lock，不放 README.md/src/)後 `uv sync --locked --no-dev` **真的失敗**(`OSError: Readme file does not exist: README.md`)。已修正 Dockerfile：`README.md` 與 `src/` 提前到 `uv sync` 之前一起複製，修正後重現通過。
+    2. 用臨時目錄完整重現 Dockerfile 的檔案佈局(`pyproject.toml`/`uv.lock`/`README.md`/`src/`/`configs/`)、`uv sync --locked --no-dev` 成功、以 `FHIR_COPILOT_PROVIDER=mock`(等同容器內無金鑰自動退回 mock 的路徑)+ `FHIR_COPILOT_DATA_DIR` 指向 committed fixtures 啟動 `uvicorn`，實測 `/api/health`(回傳 `demo_mode:true`)、`/api/patients`、`/api/chat`(真實跑完 agent loop、回傳含 evidence 的正確答案)皆正常
+  - 這個環境問題不影響 HF Docker Space 實際部署(HF 的 build 環境是全新的 Linux runner，不會有這台機器 AppData 底下的殘留檔案)，但**本機 `docker build` 本身尚未經過真正的 image build 驗證**，這是誠實記錄的已知限制，不宣稱已完整驗證。
 
 ## 4. 架構
 
@@ -181,7 +188,8 @@ data/raw、data/processed   # gitignored
 
 | 風險 | 影響 | 對策 |
 |---|---|---|
-| 專案路徑含中文與空格 | uv/node/docker 可能踩雷 | **M0 已實測**：Python 3.11/3.12 的 `.pth` cp950 問題 → 改用 3.13 解決（ADR 0002）；pre-commit 設定檔需 ASCII-only。**M4 已實測**：node v24.16.0 + npm create vite + npm install + npm run build 全部正常，中文路徑無影響。docker（M7）待實測 |
+| 專案路徑含中文與空格 | uv/node/docker 可能踩雷 | **M0 已實測**：Python 3.11/3.12 的 `.pth` cp950 問題 → 改用 3.13 解決（ADR 0002）；pre-commit 設定檔需 ASCII-only。**M4 已實測**：node v24.16.0 + npm create vite + npm install + npm run build 全部正常，中文路徑無影響。**M7**：`uv sync`/uvicorn 在等效重現環境下正常（見 §3 M7），真正 `docker build` 本身因本機 Docker Desktop 環境問題（非中文路徑造成，見 §3 M7 說明）未能現場驗證，是否受中文路徑影響仍未知，留待使用者本機環境修好後補測 |
+| 本機 Docker Desktop backend crash-loop | `docker build`/`docker compose up` 無法現場驗證 | 根因是 AppData 下 AF_UNIX socket 檔案反覆變成無法存取（Windows error 1920），疑似即時防毒鎖定新建立的 socket reparse point；已用等效方式驗證 Dockerfile 邏輯正確（見 §3 M7），但真正的 image build 仍待使用者環境修復後執行 `docker build -t fhir-care-copilot .` 補測 |
 | 模型 id / 定價漂移 | 成本估算失準、呼叫失敗 | 全放 `configs/`，不寫死 |
 | Gemini free tier quota | eval 中斷 | 有 3 組 backup key；選配 429 failover（非核心） |
 | sep2019 樣本較舊（pre-v3.4.0） | 欄位慣例與新版不同 | parser 同時支援新舊慣例；fixture 兩種都涵蓋 |

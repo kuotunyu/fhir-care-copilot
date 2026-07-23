@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:7860"
+    environment:
+      # 沒有 .env 或沒填金鑰也能跑——provider 會自動退回 mock demo mode
+      # (見 src/fhir_copilot/api/dependencies.py:resolve_provider_name)
+      FHIR_COPILOT_PROVIDER: ${FHIR_COPILOT_PROVIDER:-mock}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}

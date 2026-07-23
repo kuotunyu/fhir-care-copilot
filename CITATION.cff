@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "使用本專案請引用下方 preferred-citation(Synthea 官方論文)。本專案本身是展示用作品,無獨立論文。"
+title: "FHIR Care Copilot"
+type: software
+authors:
+  - name: "kuotunyu"
+repository-code: "https://github.com/kuotunyu/fhir-care-copilot"
+license: Apache-2.0
+date-released: "2026-07-24"
+abstract: >
+  可追溯、工具受控、預設唯讀的長照個案查詢 agent,基於 Synthea 合成病患 FHIR R4 資料。
+  不是醫療診斷工具,僅供合成資料展示與作品集用途。
+preferred-citation:
+  type: article
+  title: "Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record"
+  authors:
+    - family-names: "Walonoski"
+      given-names: "J"
+    - family-names: "Kramer"
+      given-names: "M"
+    - family-names: "Nichols"
+      given-names: "J"
+    - family-names: "Quina"
+      given-names: "A"
+    - family-names: "Moesel"
+      given-names: "C"
+    - family-names: "Hall"
+      given-names: "D"
+    - family-names: "Duffett"
+      given-names: "C"
+    - family-names: "Dube"
+      given-names: "K"
+    - family-names: "Gallagher"
+      given-names: "T"
+    - family-names: "McLachlan"
+      given-names: "S"
+  journal: "Journal of the American Medical Informatics Association"
+  year: 2018
+  volume: 25
+  issue: 3
+  start: 230
+  end: 238
+  doi: "10.1093/jamia/ocx079"
+  url: "https://doi.org/10.1093/jamia/ocx079"
