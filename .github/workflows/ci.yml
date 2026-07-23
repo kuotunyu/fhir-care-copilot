@@ -31,3 +31,10 @@ jobs:
       - name: Test (pytest)
         run: uv run pytest
         # CI 一律使用 mock provider,不需要任何 API 金鑰(secret 永不進 CI)
+
+      - name: Eval smoke test (mock provider, committed fixtures)
+        # 對 tests/data/fixtures(2 位手工病患)跑一次 CLI,驗證 script 本身(不只函式庫)能跑;
+        # 不用真實 100 位病患資料(data/ 未進 git,CI 上不存在)
+        run: |
+          uv run python scripts/run_eval.py --provider mock \
+            --data-dir tests/data/fixtures --out /tmp/ci-eval-smoke.json

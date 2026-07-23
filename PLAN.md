@@ -1,6 +1,6 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0/M1/M2/M3/M4 完成（2026-07-24），下一步 M5 Eval harness
+> **狀態**：M0–M5 完成（2026-07-24），下一步 M6 模型比較
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -40,9 +40,9 @@
 - [x] **M4 — API + 前端工作台**（2026-07-24 完成）
   FastAPI endpoints：病患清單、summary(timeline)、chat、care-note propose/confirm、health、providers。React + Vite 工作台：病患選擇器（搜尋）、時間軸（診斷/用藥/觀察值/照護計畫分頁）、對話區、證據抽屜、cost/latency badge、拒答狀態；**正體中文 UI（專有名詞保留原文）**、鍵盤可操作（`:focus-visible`、原生 `<details>`/表單語意）、手機可瀏覽（已實測 375px 寬無橫向溢位）；`vite build` 靜態檔由 FastAPI serve（同一 process、同一 port）。設計語彙:「溫暖病歷夾」(奶油紙色 + 深松石綠 + 赤陶橘,紅色保留給拒答/錯誤)。
   **驗收**：`just run` 一行指令啟動；90 秒 demo 路徑已用瀏覽器對真實 100 位病患資料實測走通（選病患→看時間軸→問問題→看證據抽屜與 cost badge→切換病患）；FastAPI 直接 serve production build 與 vite dev proxy 兩種模式都驗證過；89 個後端測試 + oxlint 皆綠。
-- [ ] **M5 — Eval harness**
-  從 FHIR 結構自動產生 ≥200 筆有 deterministic 標準答案的 cases（不人工標註），題型：藥物、疾病、最近量測、時間順序、不可回答、prompt injection。指標：tool-selection accuracy、field exact match、citation validity、unsupported-claim rate、refusal accuracy、p50/p95 latency、平均成本。預算守門：預設 $5 上限、跑前估算、超過即停並提示。CI 以 mock provider 跑 eval。
-  **驗收**：mock 全量 eval 跑通並輸出全部指標。
+- [x] **M5 — Eval harness**（2026-07-24 完成）
+  從 FHIR 結構自動產生 220 筆有 deterministic 標準答案的 cases（不人工標註,對真實 100 位病患資料實測）,題型：藥物/疾病/最近量測/照護計畫各 45 題、不可回答 20 題、prompt injection 20 題。指標：tool-selection accuracy、field exact match、citation validity（直接對照真實 store 驗證每筆 evidence 的 resourceType/id）、unsupported-claim rate、refusal accuracy、injection resistance、p50/p95 latency、平均成本。預算守門：預設 $5 上限、跑前用固定假設估算(超過直接 raise、不花錢)、執行中累計實際花費(超過提前停止)。
+  **驗收**：`uv run python scripts/run_eval.py --provider mock --full-eval` 對真實 100 位病患資料跑通 220/220 題,輸出全部指標到 `reports/eval_results.json`；26 個新測試全綠。已知限制誠實記錄在 `.claude/skills/run-eval/SKILL.md`（「不可回答」只涵蓋病患不存在情境；unsupported-claim 是啟發式判準）。
 - [ ] **M6 — 模型比較**
   小樣本先跑（兩模型各 ~40 題）→ `--full-eval` 開關 + 成本預估。產出 `reports/eval_results.json`、圖表、`reports/model_comparison.md`。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
   **驗收**：真實跑出的數字與成本紀錄。

@@ -6,6 +6,52 @@
 
 ---
 
+## 2026-07-24（續之二）— M5 完成 ✅（Eval harness，220 題對真實資料跑通）
+
+**做了什麼**
+- `src/fhir_copilot/eval/`:`cases.py`(自動產生 case,標準答案直接來自真實工具回傳值,不人工標註)、`metrics.py`(6 項指標判準)、`runner.py`(執行 + 兩層預算守門)
+- 題型配比(對真實 100 位病患資料實測後決定):medication/condition/observation/careplan 各 45 題(掃描全部 100 位病患,只挑該類別「確實有資料」的病患,決定性排序,不用隨機)、unanswerable 20 題(固定一批不存在的 patient_id)、injection 20 題(5 種使用者訊息注入攻擊 × 真實病患輪流配對)——共 220 題,超過 PLAN.md 要求的 ≥200
+- 6 項指標:tool-selection accuracy(從 evidence 的 resourceType 反推用了哪個工具,不用額外埋點)、field exact match、**citation validity**(直接對照真實 store 驗證每筆 evidence 的 resourceType/id 真的存在——這是最重要、也是唯一不含糊的指標)、unsupported-claim rate(啟發式:沒拒答+有實質內容+evidence 是空的)、refusal accuracy、injection resistance(答案不含攻擊訊息想誘導出的字串)、p50/p95 latency、平均成本
+- 預算守門兩層:跑前用固定假設(2000 input + 300 output tokens/題)估算,超過直接 raise、不花錢;執行中累計每題真實花費,超過就提前停止(已完成的結果會保留,不是整個作廢)
+- `scripts/run_eval.py` CLI(`--provider`、`--full-eval`、`--sample-per-category`、`--budget-usd`、`--out`),輸出 `reports/eval_results.json`
+- CI 新增一步:對 `tests/data/fixtures`(2 位手工病患)跑一次真實 CLI(不是只測函式庫),確認 script 本身沒壞——不用真實 100 位病患資料(`data/` 未進 git)
+- 26 個新測試(`test_eval_cases.py`/`test_eval_metrics.py`/`test_eval_runner.py`),含預算守門兩條路徑(跑前估算擋下 vs 執行中提前停止)各自的獨立測試
+
+**真實測試輸出**
+```
+uv run pytest          → 115 passed in 1.72s
+uv run mypy             → Success: no issues found in 57 source files
+uv run ruff check .     → All checks passed!
+
+# 對真實 100 位病患資料跑完整 220 題(mock provider)
+uv run python scripts/run_eval.py --provider mock --full-eval
+INFO 產生 220 題(full_eval=True,provider=mock)
+INFO 預估成本 $0.0000(共 220 題,預算上限 $5.00)
+INFO 完成 220/220 題,實際花費 $0.0000
+
+=== mock(mock-deterministic) eval 結果(220/220 題) ===
+tool-selection accuracy: 85.0%
+field exact match rate:  85.0%
+citation validity rate:  100.0%
+unsupported claim rate:  0.0%
+refusal accuracy:        100.0%
+injection resistance:    100.0%
+p50 / p95 latency (ms):  2 / 15
+avg / total cost (USD):  $0.00000 / $0.0000
+```
+
+**決策 / 發現**
+- mock 的 tool-selection/field-match 只有 85%,不是 bug——是關鍵字比對的真實極限:某些題目模板(如「請列出病患目前的健康問題」)沒有命中任何關鍵字規則,fallback 到 `get_patient_demographics`。這正是 eval harness 有效運作的證明(它真的抓得到路由錯誤),已在 `.claude/skills/run-eval/SKILL.md` 說明,不要被這數字誤導成「系統只有 85% 準」
+- **citation validity 100%**、**unsupported claim rate 0%**——這是目前最重要的信任訊號,直接驗證「每個病患事實都出自 deterministic tool、附真實可查證的證據」這個專案核心承諾在 220 題規模下成立
+- injection resistance 100% 對 mock 沒有意義(mock 不理解語言,無從服從注入指令起,不是因為它很安全)——這個指標真正有意義的地方是 M6 對 Gemini/OpenAI 真的跑一次,已在 skill 文件裡明確標註,避免拿 mock 的數字當作安全性證據誤用
+- 誠實記錄已知限制,不誇大:「不可回答」目前只測了「病患不存在」;「工具查不到但病患存在」(如問保險狀態)不會觸發拒答,是架構上還沒做的部分,已寫進 skill 文件
+
+**下一步**
+- M6:實際對 Gemini(gemini-3.1-flash-lite)與 OpenAI(gpt-5.4-mini)跑 eval(小樣本先跑,`--full-eval` 開關可用),產出 `reports/model_comparison.md`;重點看 injection resistance 這兩個真實模型的表現如何
+- commit 這次 M5 的所有變更
+
+---
+
 ## 2026-07-24（續）— M4 完成 ✅（FastAPI + React 工作台，瀏覽器實測通過）
 
 **做了什麼**
