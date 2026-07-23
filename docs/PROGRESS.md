@@ -46,7 +46,12 @@ uv run python scripts/publish_to_hf.py --repo-id kuotunyu/fhir-care-copilot --se
 - 使用者本機環境:Docker Desktop 反覆 crash-loop 的問題已記錄在 PLAN.md §3 M7 與 §10 風險表,可能需要重灌 Docker Desktop,或暫時停用即時防護測試是否為防毒鎖檔導致(這類系統/安全性設定變更超出本次自主執行範圍,留給使用者判斷)
 - Docker Desktop 修好後:`docker build -t fhir-care-copilot .` 驗證真正的 image 建置、`docker compose up` 驗證完整啟動流程與 port 對應
 - 之後若要發布到 HF Space:`uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --execute`(需要 `HF_TOKEN`)
-- 所有 M0–M7 milestone 至此皆已完成;若要繼續,可考慮:補齊 90 秒 demo 的實際截圖(README 目前是 placeholder)、跑完整 220 題雙模型全量比較(目前只有各 30 題小樣本)
+- 所有 M0–M7 milestone 至此皆已完成;若要繼續,可考慮:補齊 90 秒 demo 的實際截圖(README 目前是 placeholder,本次嘗試用瀏覽器工具截圖但這個 session 的 Browser pane 無法 compositing,改用 `read_page`/`get_page_text` 做功能性確認,見下方)、跑完整 220 題雙模型全量比較(目前只有各 30 題小樣本)
+
+**commit 後追加的最終確認(未產生新程式碼變更,純驗證)**
+- 新增 `.claude/launch.json`(給瀏覽器工具用的 dev server 啟動設定,`uv run uvicorn ... --port 8000`)
+- 試著用瀏覽器工具截圖給 README 補真實畫面,但這個 session 的 Browser pane 無法 compositing(`the Browser pane is not displayed`)——推測是離線自主執行沒有可顯示的視窗,不是應用程式的問題;改用 `read_page`/`get_page_text` 做功能性驗證
+- 對真實 100 位病患資料(`data/processed/subset_100`,非 fixture)完整重跑一次 M4 的 90 秒 demo 路徑:病患清單(100 位)正常呈現 → 選病患(Aaron697 Brekke496)→ 時間軸(5 個診斷、20 筆觀察值、2 個照護計畫皆正確顯示,含 SNOMED code)→ 在真實表單輸入「他最近的觀察值是什麼？」並送出 → 收到正確答案(10 筆觀察值,含血壓/血糖/肌酸酐等真實數值與時間戳記)→ cost badge 正確顯示(`mock-deterministic · 0 ms · 2→189 tok · US$0.00000`)→ 證據抽屜顯示 10 筆證據。全程透過真實瀏覽器互動,不是 API curl——這是 M0–M7 全部完成後,對整條 pipeline(store → tools → agent loop → API → 前端)的一次端到端回歸確認,沒有發現任何 regression
 
 ---
 
