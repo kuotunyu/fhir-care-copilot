@@ -129,7 +129,7 @@ def resolve_audit_sink(jsonl_path: Path) -> AuditSink:
 
     try:
         from fhir_copilot.ops.audit.postgres import PostgresAuditSink
-    except ImportError as exc:  # pragma: no cover - 取決於有沒有裝 extra
+    except ImportError as exc:
         raise RuntimeError(
             "設定了 DATABASE_URL 但沒有安裝 postgres extra。"
             "請執行 `uv sync --extra postgres`,或取消設定 DATABASE_URL 以使用檔案模式。"

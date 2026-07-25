@@ -264,6 +264,35 @@ class TestOptionalDatabase:
 
         assert sink.backend == "jsonl"
 
+    def test_missing_driver_fails_loudly_instead_of_silently_using_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """設定了 DATABASE_URL 但沒裝 postgres extra 時要**炸掉**,不能默默退回檔案。
+
+        默默降級會讓人以為紀錄進了資料庫,其實在檔案裡——稽核軌跡的位置不能靠猜。
+
+        這個測試同時守住另一件事:CI 的 check job 為了讓 mypy 看得到 psycopg 而
+        安裝了 extra,所以「沒裝 extra 會怎樣」在那個環境下驗不到。這裡用假的
+        import 失敗把那條路徑補回來。
+        """
+        import builtins
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://x/y")
+        real_import = builtins.__import__
+
+        def fail_on_psycopg(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name.startswith("psycopg") or name.endswith("audit.postgres"):
+                raise ImportError("No module named 'psycopg'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fail_on_psycopg)
+        monkeypatch.delitem(
+            __import__("sys").modules, "fhir_copilot.ops.audit.postgres", raising=False
+        )
+
+        with pytest.raises(RuntimeError, match="postgres extra"):
+            resolve_audit_sink(tmp_path / "audit.jsonl")
+
     def test_empty_database_url_is_treated_as_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
