@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from fhir_copilot.api.dependencies import (
     audit_log_path,
     get_budget,
     get_guardrails,
+    get_metrics,
     get_ops,
     get_pricing,
     get_provider,
@@ -36,6 +38,8 @@ from fhir_copilot.care_notes import (
 )
 from fhir_copilot.config import Guardrails, ModelPricing, load_providers
 from fhir_copilot.ops.identity import load_api_keys, require_auth
+from fhir_copilot.ops.redaction import hash_patient_id, text_shape
+from fhir_copilot.ops.tracing import get_tracer
 from fhir_copilot.providers.base import Provider
 from fhir_copilot.store.base import FHIRStore
 from fhir_copilot.tools import (
@@ -50,6 +54,8 @@ from fhir_copilot.tools import (
     list_active_conditions,
     list_active_medications,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -130,19 +136,51 @@ def chat(
     pricing: PricingDep,
     caller: CostlyCallerDep,
 ) -> AgentResponse:
-    """唯一會花錢的端點,所以是唯一同時受認證、限流與預算三層守門的端點。"""
-    del caller  # 目前只用於守門與限流分桶;寫進日誌是 Phase 2 的事
-    response = answer_question(
-        provider=provider,
-        store=store,
-        patient_id=request.patient_id,
-        question=request.question,
-        guardrails=guardrails,
-        pricing=pricing,
-    )
+    """唯一會花錢的端點,所以是唯一同時受認證、限流與預算三層守門的端點。
+
+    ``agent.answer`` span 在這裡建而不是在 ``agent/loop.py`` 裡——loop 只多了
+    工具那一層 span,其餘觀測全部在它外面組裝。
+    """
+    # patient_id 一律雜湊、問題只記長度:日誌與 trace 不碰病患資料(ops/redaction)
+    patient_ref = hash_patient_id(request.patient_id)
+    with get_tracer().start_as_current_span("agent.answer") as span:
+        span.set_attribute("caller", caller)
+        span.set_attribute("patient.ref", patient_ref)
+        span.set_attribute("question.length", len(request.question))
+        response = answer_question(
+            provider=provider,
+            store=store,
+            patient_id=request.patient_id,
+            question=request.question,
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        span.set_attribute("agent.refused", response.refused)
+        span.set_attribute("agent.evidence_count", len(response.evidence))
+        span.set_attribute("agent.input_tokens", response.input_tokens)
+        span.set_attribute("agent.output_tokens", response.output_tokens)
+
+    metrics = get_metrics()
+    if response.refused:
+        # limitations 是四個固定常數之一,不含使用者輸入,可以安全當標籤
+        metrics.refusals.labels(response.limitations or "unknown").inc()
+
     # 事後累計實際花費。依賴看不到回應,所以這一步只能在路由層做。
     # (拒答路徑也會走到這裡,而拒答的成本通常是 0——照記,不特別處理。)
     get_budget().record(response.estimated_cost_usd)
+
+    logger.info(
+        "chat_answered",
+        extra={
+            "caller": caller,
+            "patient_ref": patient_ref,
+            "question": text_shape(request.question),
+            "refused": response.refused,
+            "evidence_count": len(response.evidence),
+            "latency_ms": response.latency_ms,
+            "cost_usd": response.estimated_cost_usd,
+        },
+    )
     return response
 
 

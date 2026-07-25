@@ -8,6 +8,11 @@
 - 任一工具回傳 ``ok=False``(病患不存在)→ 立刻結構化拒答,不再繼續問 LLM
   (同一問題所有工具呼叫共用同一個 patient_id,ok=False 對這個問題必然全部一致)
 - FHIR 資料內容(工具回傳值)一律當作 data 餵給 LLM,不是指令
+
+可觀測性(營運層 Phase 2):這個模組唯一的改動是替每次工具執行加一個 span。
+**只加 span——不改控制流程、不改任何 guardrail 值、不改拒答條件。** provider
+呼叫的 span 由 ``ops.instrumented_provider`` 在外面包,不需要動這裡。
+span 屬性只記工具名稱與結果形狀,不記工具回傳的病患欄位(見 ``ops.redaction``)。
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from pydantic import ValidationError
 
 from fhir_copilot.agent.response import AgentResponse
 from fhir_copilot.config import Guardrails, ModelPricing, estimate_cost_usd
+from fhir_copilot.ops.tracing import get_tracer
 from fhir_copilot.providers.base import Provider, ToolCallOutcome
 from fhir_copilot.store.base import FHIRStore
 from fhir_copilot.tools.base import Evidence
@@ -101,8 +107,14 @@ def _execute_tool_calls(
                 )
             )
             continue
-        result = spec.handler(store, params)
-        result_dict = result.model_dump(mode="json")
+        # 只包 span,不改任何行為;OTel 未設定時是 NoOpTracer,開銷接近零
+        with get_tracer().start_as_current_span(f"tool.{call.tool_name}") as span:
+            result = spec.handler(store, params)
+            result_dict = result.model_dump(mode="json")
+            span.set_attribute("tool.name", call.tool_name)
+            span.set_attribute("tool.ok", bool(result_dict.get("ok", True)))
+            evidence_list = result_dict.get("evidence") or []
+            span.set_attribute("tool.evidence_count", len(evidence_list))
         outcomes.append(ToolCallOutcome(call.call_id, call.tool_name, result_dict))
         if result_dict.get("ok") is False:
             any_not_found = True
