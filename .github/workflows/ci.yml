@@ -6,7 +6,14 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # 開發在 Windows、部署在 Linux,兩邊都要綠。Windows 專屬問題(路徑分隔、
+    # 檔案鎖語意、cp950 編碼)只有真的在 windows runner 上跑才測得到。
+    strategy:
+      # 一個 OS 壞掉不要中止另一個——要看到的是「哪個平台壞了」,不是「有東西壞了」
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +27,14 @@ jobs:
         # --locked:uv.lock 與 pyproject.toml 不同步時直接 fail,不默默重新解析
         run: uv sync --locked
 
-      - name: Lint (ruff)
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
+      # 拆成兩個 step 而不是一個 multi-line run:windows runner 預設 shell 是
+      # pwsh,只會用「最後一行」的 exit code 決定 step 成敗——寫成兩行的話
+      # ruff check 失敗會被後面成功的 ruff format 蓋掉。拆開就與 shell 無關。
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Lint (ruff format)
+        run: uv run ruff format --check .
 
       - name: Typecheck (mypy)
         run: uv run mypy
@@ -34,7 +45,32 @@ jobs:
 
       - name: Eval smoke test (mock provider, committed fixtures)
         # 對 tests/data/fixtures(2 位手工病患)跑一次 CLI,驗證 script 本身(不只函式庫)能跑;
-        # 不用真實 100 位病患資料(data/ 未進 git,CI 上不存在)
+        # 不用真實 100 位病患資料(未進 git,CI 上不存在)。
+        # 輸出路徑用 runner.temp 而不是寫死 /tmp:windows runner 沒有 /tmp。
+        # 也刻意寫成單行,不用反斜線續行(那是 bash 語法,pwsh 會解析失敗)。
+        run: uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --out "${{ runner.temp }}/ci-eval-smoke.json"
+
+  docker:
+    # image 建置只在 Linux 驗證(base image 都是 linux)。這個 job 要抓的是
+    # .dockerignore 與 COPY / layer 順序這類與開發機無關的錯誤——正是先前
+    # 「用等效方式驗證」抓不到的那一類。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        # 不 push,只驗證建得起來。build 期間會下載 Synthea 樣本資料烤進 image,
+        # 所以這個 job 比其他 job 慢得多(數分鐘)。
+        run: docker build -t fhir-care-copilot:ci .
+
+      - name: Smoke test the image
+        # 光是 build 成功不代表跑得起來——CMD、非 root 使用者、烤進去的資料
+        # 三件事都要真的啟動一次才知道。
         run: |
-          uv run python scripts/run_eval.py --provider mock \
-            --data-dir tests/data/fixtures --out /tmp/ci-eval-smoke.json
+          docker run -d --name copilot-ci -p 7860:7860 fhir-care-copilot:ci
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:7860/api/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:7860/api/health | tee /dev/stderr | grep -q '"demo_mode":true'
+          docker rm -f copilot-ci
