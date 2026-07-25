@@ -32,7 +32,11 @@ class HealthResponse(BaseModel):
     rate_limit_per_minute: int
     budget_limit_usd: float
     budget_spent_usd_today: float
-    budget_counting_since: str  # 記憶體計數,重啟歸零——起算時間攤開講
+    # ---- 稽核與預算的降級狀態(Phase 4)----
+    audit_backend: str  # postgres | jsonl
+    draft_signing_key_configured: bool  # false = 用 process 臨時金鑰,重啟後舊草稿失效
+    budget_persistent: bool  # false = 記憶體計數,重啟歸零
+    budget_counting_since: str  # 記憶體模式的起算時間——攤開講,不假裝它是持久的
 
 
 class PatientListResponse(BaseModel):

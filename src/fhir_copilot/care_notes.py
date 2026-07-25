@@ -16,10 +16,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from fhir_copilot.ops.audit.signing import sign_draft, verify_draft
+from fhir_copilot.ops.audit.sinks import AuditSink
 from fhir_copilot.store.base import FHIRStore, UnknownPatientError
 from fhir_copilot.tools.base import ToolErrorCode
 
 DEFAULT_AUDIT_LOG_PATH = Path("audit_log") / "care_notes.jsonl"
+
+
+class DraftSignatureError(ValueError):
+    """草稿的簽章驗不過——它不是這個系統產生的,或內容被改過。"""
 
 
 class ProposeCareNoteInput(BaseModel):
@@ -30,11 +36,19 @@ class ProposeCareNoteInput(BaseModel):
 
 
 class CareNoteDraft(BaseModel):
+    """草稿。``signature`` 證明它是這個系統產生的。
+
+    沒有簽章的話,通過認證的呼叫者仍然可以送出從來沒有經過 ``propose`` 的內容
+    (包括自己編的 ``proposed_at``)——防竄改鏈會忠實地保護一筆**一開始就是假的**
+    紀錄。認證回答的是「是誰打進來的」,不是「這份草稿是不是這個系統產生的」。
+    """
+
     model_config = ConfigDict(strict=True)
 
     patient_id: str
     note_text: str
     proposed_at: str
+    signature: str
 
 
 class ProposeCareNoteResult(BaseModel):
@@ -52,10 +66,14 @@ def propose_care_note(store: FHIRStore, params: ProposeCareNoteInput) -> Propose
     except UnknownPatientError:
         return ProposeCareNoteResult(ok=False, error=ToolErrorCode.PATIENT_NOT_FOUND)
 
+    proposed_at = datetime.now(UTC).isoformat()
     draft = CareNoteDraft(
         patient_id=params.patient_id,
         note_text=params.note_text,
-        proposed_at=datetime.now(UTC).isoformat(),
+        proposed_at=proposed_at,
+        signature=sign_draft(
+            patient_id=params.patient_id, note_text=params.note_text, proposed_at=proposed_at
+        ),
     )
     return ProposeCareNoteResult(ok=True, draft=draft)
 
@@ -70,18 +88,37 @@ class ConfirmedCareNote(BaseModel):
 
 
 def confirm_and_log(
-    draft: CareNoteDraft, *, audit_log_path: Path = DEFAULT_AUDIT_LOG_PATH
+    draft: CareNoteDraft,
+    *,
+    sink: AuditSink,
+    actor: str = "unknown",
+    request_id: str = "-",
 ) -> ConfirmedCareNote:
-    """UI 明確確認後才呼叫。附加寫入本地 audit log(JSONL),不覆蓋既有紀錄,
-    且永遠不寫回 FHIR。"""
-    confirmed = ConfirmedCareNote(
+    """UI 明確確認後才呼叫。**先驗簽,再寫入**,且永遠不寫回 FHIR。
+
+    寫入走 ``AuditSink``:append-only、帶 hash chain、併發安全。
+    後端是 Postgres 還是 JSONL 由有沒有 ``DATABASE_URL`` 決定,這裡不需要知道。
+    """
+    if not verify_draft(
         patient_id=draft.patient_id,
         note_text=draft.note_text,
         proposed_at=draft.proposed_at,
-        confirmed_at=datetime.now(UTC).isoformat(),
+        signature=draft.signature,
+    ):
+        raise DraftSignatureError("草稿簽章驗證失敗")
+
+    confirmed_at = datetime.now(UTC).isoformat()
+    sink.append(
+        patient_id=draft.patient_id,
+        note_text=draft.note_text,
+        proposed_at=draft.proposed_at,
+        confirmed_at=confirmed_at,
+        actor=actor,
+        request_id=request_id,
     )
-    audit_log_path.parent.mkdir(parents=True, exist_ok=True)
-    with audit_log_path.open("a", encoding="utf-8") as f:
-        f.write(confirmed.model_dump_json())
-        f.write("\n")
-    return confirmed
+    return ConfirmedCareNote(
+        patient_id=draft.patient_id,
+        note_text=draft.note_text,
+        proposed_at=draft.proposed_at,
+        confirmed_at=confirmed_at,
+    )
