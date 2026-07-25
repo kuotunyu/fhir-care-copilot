@@ -30,6 +30,30 @@ budget:
   estimated_input_tokens_per_request: 2000
   estimated_output_tokens_per_request: 300
 
+resilience:
+  # 外部 LLM provider 會超時、會 429、會回垃圾。這一組管的是「單次 provider
+  # 呼叫」的行為,與 guardrails.yaml 的 timeout_seconds(整個 loop 的累計上限)
+  # 是兩個不同層級,不要混。
+
+  # 單次 provider 呼叫的逾時。這個值會傳給 SDK 的 HTTP client,是真的中止請求,
+  # 不是「不等它」——後者會讓底層連線繼續佔著 threadpool slot(見 Phase 0 量到的
+  # 飽和點),等於把逾時變成資源洩漏。
+  # 必須明顯小於 guardrails.timeout_seconds(30),否則 loop 還沒判逾時就先被
+  # 單次呼叫吃光時間。
+  provider_timeout_seconds: 12
+
+  # 指數退避重試。只重試「可能是暫時性」的失敗(逾時、連線錯誤、5xx、429)。
+  max_retries: 2 # 首次呼叫之外再試幾次
+  backoff_initial_seconds: 0.5
+  backoff_multiplier: 2.0
+  backoff_max_seconds: 4.0
+
+  # 熔斷:連續失敗到閾值就直接拒絕,不再打 provider。
+  # 目的是「壞掉的時候不要把每個使用者都卡滿 12 秒」,而不是省錢。
+  failure_threshold: 5 # 連續失敗幾次後開啟
+  recovery_seconds: 30 # 開啟後多久進入半開,放一個請求去探路
+  half_open_successes: 2 # 半開狀態連續成功幾次才關回去
+
 load_test:
   # 負載測試專用(Phase 0 基線 / Phase 5 對照)。兩次測量必須用同一組參數,
   # 否則數字不可比。

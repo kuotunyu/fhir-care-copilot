@@ -40,6 +40,25 @@ class BudgetConfig(BaseModel):
     estimated_output_tokens_per_request: int
 
 
+class ResilienceConfig(BaseModel):
+    """單次 provider 呼叫的逾時、重試與熔斷。
+
+    與 ``guardrails.timeout_seconds``(整個 agent loop 的累計上限)是兩個層級,
+    刻意分在不同設定檔。
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    provider_timeout_seconds: float
+    max_retries: int
+    backoff_initial_seconds: float
+    backoff_multiplier: float
+    backoff_max_seconds: float
+    failure_threshold: int
+    recovery_seconds: float
+    half_open_successes: int
+
+
 class LoadTestConfig(BaseModel):
     """負載測試參數(Phase 0 基線與 Phase 5 對照必須共用同一組值)。"""
 
@@ -61,6 +80,7 @@ class OpsConfig(BaseModel):
     auth: AuthConfig
     rate_limit: RateLimitConfig
     budget: BudgetConfig
+    resilience: ResilienceConfig
     load_test: LoadTestConfig
 
 

@@ -91,12 +91,27 @@ class GeminiProvider:
     providers.factory.make_provider,從 configs/models.yaml 讀入)決定,
     不寫死在這裡——換模型只要改設定檔。"""
 
-    def __init__(self, *, model_id: str = _DEFAULT_MODEL_ID, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        model_id: str = _DEFAULT_MODEL_ID,
+        api_key: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> None:
         self.model_id = model_id
         key = api_key or os.environ.get("GEMINI_API_KEY")
         if not key:
             raise RuntimeError("GEMINI_API_KEY 未設定,無法建立 GeminiProvider")
-        self._client = genai.Client(api_key=key)
+        # 單次呼叫逾時下在 SDK 的 HTTP client:那是真的中止請求。在外層用執行緒
+        # 包 timeout 只能「不等它」,底層連線還在跑、執行緒也殺不掉,等於把逾時
+        # 變成 threadpool 洩漏(而 threadpool 飽和正是 Phase 0 量到的瓶頸)。
+        # 值出自 configs/ops.yaml 的 resilience.provider_timeout_seconds。
+        http_options = (
+            types.HttpOptions(timeout=int(timeout_seconds * 1000))
+            if timeout_seconds is not None
+            else None
+        )
+        self._client = genai.Client(api_key=key, http_options=http_options)
 
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]

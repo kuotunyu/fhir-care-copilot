@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
-from openai import OpenAI
+from openai import NOT_GIVEN, OpenAI
 
 from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.tools.registry import ToolSpec, llm_facing_schema
@@ -79,12 +79,25 @@ class OpenAIProvider:
     providers.factory.make_provider,從 configs/models.yaml 讀入)決定,
     不寫死在這裡——換模型只要改設定檔。"""
 
-    def __init__(self, *, model_id: str = "gpt-5.4-mini", api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        model_id: str = "gpt-5.4-mini",
+        api_key: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> None:
         self.model_id = model_id
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY 未設定,無法建立 OpenAIProvider")
-        self._client = OpenAI(api_key=key)
+        # 單次呼叫逾時下在 SDK(理由同 gemini adapter:那是真的中止請求)。
+        # max_retries=0:重試由 ops/resilience.py 統一負責,否則 SDK 內建的
+        # 重試會和外層的退避疊在一起,實際重試次數與間隔都變成算不出來的值。
+        self._client = OpenAI(
+            api_key=key,
+            timeout=timeout_seconds if timeout_seconds is not None else NOT_GIVEN,
+            max_retries=0,
+        )
 
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]

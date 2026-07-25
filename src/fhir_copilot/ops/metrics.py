@@ -65,6 +65,12 @@ class Metrics:
             ["error_code"],
             registry=self.registry,
         )
+        self.circuit_state_changes = Counter(
+            "fhir_copilot_circuit_state_changes_total",
+            "熔斷器狀態變化次數(依變更後的狀態)",
+            ["state"],
+            registry=self.registry,
+        )
         self.budget_spent = Gauge(
             "fhir_copilot_budget_spent_usd_today",
             "當日累計成本(美元);記憶體計數,重啟歸零",
