@@ -8,6 +8,7 @@ from fhir_copilot.care_notes import (
     confirm_and_log,
     propose_care_note,
 )
+from fhir_copilot.ops.audit import JsonlAuditSink
 from fhir_copilot.store import LocalBundleFHIRStore
 from fhir_copilot.tools import READ_ONLY_TOOLS, TOOLS_BY_NAME
 from fhir_copilot.tools.base import ToolErrorCode
@@ -43,7 +44,7 @@ def test_confirm_and_log_appends_jsonl(store: LocalBundleFHIRStore, tmp_path: Pa
     )
     assert result.draft is not None
 
-    confirmed = confirm_and_log(result.draft, audit_log_path=audit_log)
+    confirmed = confirm_and_log(result.draft, sink=JsonlAuditSink(audit_log))
 
     assert confirmed.confirmed_at
     lines = audit_log.read_text(encoding="utf-8").splitlines()
@@ -57,12 +58,13 @@ def test_confirm_and_log_appends_not_overwrites(
     store: LocalBundleFHIRStore, tmp_path: Path
 ) -> None:
     audit_log = tmp_path / "care_notes.jsonl"
+    sink = JsonlAuditSink(audit_log)
     for text in ("第一筆", "第二筆"):
         draft = propose_care_note(
             store, ProposeCareNoteInput(patient_id=AMY_ID, note_text=text)
         ).draft
         assert draft is not None
-        confirm_and_log(draft, audit_log_path=audit_log)
+        confirm_and_log(draft, sink=sink)
 
     lines = audit_log.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
