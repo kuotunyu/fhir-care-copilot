@@ -68,6 +68,27 @@ build 會下載 85 MB Synthea 樣本烤進 image,第一次約數分鐘。
 - `/metrics` 必須在 `app.mount("/")` **之前**註冊,否則會被 `StaticFiles` 的
   catch-all 吃掉,而且症狀只是回 404 或前端首頁,不會有任何提示
 
+## 故障注入(營運層 Phase 3)
+
+用 mock provider 的失敗率驗證重試、熔斷與結構化拒答:
+
+```
+FHIR_COPILOT_MOCK_FAILURE_RATE=1.0   # 100% 失敗
+FHIR_COPILOT_MOCK_FAILURE_SEED=42    # 失敗序列可重現
+```
+
+**踩過的坑**:
+
+- **逾時要下在 SDK,不要在外層包執行緒。** 包執行緒只能「不等它」,底層 HTTP 還在跑、
+  執行緒殺不掉,等於把逾時變成 threadpool 洩漏——而 threadpool 飽和正是 Phase 0
+  量到的瓶頸,那會讓事情更糟不是更好
+- **`OpenAI` 的內建 `max_retries` 要關掉**(設 0),否則它會和外層的退避疊在一起,
+  實際重試次數與間隔都算不出來
+- **測熔斷要用腳本化的成功/失敗序列,不要用機率**。熔斷行為取決於失敗的**順序**,
+  用隨機值會得到時好時壞的測試
+- 包裝順序是 `ResilientProvider(InstrumentedProvider(真 provider))`。反過來的話
+  trace 上只看得到最後一次嘗試,重試變成看不見的成本
+
 ## 負載測試
 
 | 動作 | just | 說明 |

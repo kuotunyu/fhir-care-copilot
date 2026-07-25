@@ -6,6 +6,100 @@
 
 ---
 
+## 2026-07-25（續二）— 營運層 Phase 3（韌性）
+
+**做了什麼**
+
+- `ops/circuit.py`：熔斷器狀態機（closed / open / half-open），`threading.Lock` 保護
+- `ops/resilience.py`：`ResilientProvider` 裝飾器——指數退避重試 + 熔斷
+- 單次呼叫逾時下在 SDK：`genai.Client(http_options=...)`、`OpenAI(timeout=..., max_retries=0)`
+- `MockProvider` 加 `failure_rate` 與 `failure_seed`（seeded，可重現）
+- `agent/loop.py` 新增一個拒答原因，把 `ProviderUnavailableError` 轉成結構化拒答
+- 前端把「服務暫時無法使用」與「拒答」分開顯示
+- 設計取捨見 [ADR 0006](decisions/0006-resilience-fail-fast-not-fail-hard.md)
+
+**這個 Phase 真正在解決的問題**
+
+不是「讓失敗的請求成功」，是**「不要讓一個壞掉的下游拖垮整個服務」**。
+
+Phase 0 量出來的架構特性在這裡變成風險：7 個端點全是同步 `def`，跑在 anyio threadpool
+的 40 個 slot 上。provider 掛掉時每個請求都佔住一個 slot 直到逾時——只要每秒 4 個請求，
+不到 10 秒 threadpool 就被佔滿，**連 `/api/health` 都排不進去，監控會在服務其實還活著的
+時候誤判成整台死亡**。
+
+**三個關鍵判斷**
+
+1. **逾時下在 SDK，不在外層包執行緒。** 在外層包只能做到「不等它」——底層 HTTP 連線
+   還在跑，而 Python 的執行緒殺不掉。那會讓逾時從「釋放資源」變成「洩漏資源」，
+   正好是上面那個問題的加速器。
+2. **只重試暫時性失敗。** 全部重試會把「輸入 schema 有問題」這種必然再失敗的錯誤重打
+   三次（白花錢），而且**把程式 bug 藏在重試後面看不見**。
+3. **包裝順序：韌性在外、觀測在內。** 反過來包的話 trace 上只看得到最後一次嘗試，
+   重試就變成看不見的成本。
+
+**真實測試輸出**
+
+```
+uv run ruff check .        → All checks passed!
+uv run ruff format --check → 83 files already formatted
+uv run mypy                → Success: no issues found in 83 source files
+uv run pytest              → 224 passed（Phase 2 結束時 195，新增 29）
+npm --prefix app run lint  → oxlint 通過
+npm --prefix app run build → tsc -b && vite build 成功
+```
+
+熔斷狀態變化在 trace 上的實測（`failure_threshold=2`、`max_retries=0`、失敗率 100%）：
+
+```
+連續三次 POST /api/chat，全部 HTTP 200 + refused=true
+
+trace 上的 span：
+  POST /api/chat        x3
+  agent.answer          x3
+  provider.start        x2   ← 只有兩次
+  circuit.state_change  x1   → {'circuit.state': 'open'}
+```
+
+**第三次請求的 `provider.start` 不存在——熔斷開啟後它根本沒打出去。** 這比任何斷言都
+直接地證明了熔斷在做事。
+
+前端實測（失敗率 100%、正式的退避設定）：
+
+```
+標籤顯示「服務暫時無法使用」（不是「拒答」）
+訊息「AI 服務暫時無法回應,請稍後再試。」，沒有 stack trace
+latency 1505 ms → 正好是兩次重試的退避總和（0.5 + 1.0 秒）
+```
+
+**決策 / 發現**
+
+- **`agent/loop.py` 只動了一處**：新增拒答原因，把 provider 不可用轉成既有的 `_refuse(...)`
+  格式。既有的四個護欄一個都沒動。放在 loop 而不是路由層，是因為 eval harness 直接呼叫
+  `answer_question`——放路由層的話，評估過程中 provider 掛掉會噴例外而不是拒答，
+  那會讓 220 題的結果變成無法解讀
+- **半開狀態只放一個請求探路**。放一整批出去會在 provider 還沒好的時候再把它打垮一次，
+  這是熔斷器最常見的實作錯誤
+- **`try_acquire` 回傳「在哪個狀態下發出的」**，呼叫端要原封不動傳回去記錄結果。
+  事後重讀 `self._state` 會拿到別的執行緒改過的值
+- **關掉 `OpenAI` 的內建重試**（`max_retries=0`）：否則 SDK 的重試會和外層退避疊在一起，
+  實際重試次數與間隔都變成算不出來的值
+- **測試用 `ScriptedProvider` 而不是機率式失敗**：熔斷的行為取決於失敗的**順序**，
+  用隨機值測會得到時好時壞的測試
+- 又抓到自己寫的一個假測試：重試成本那條原本斷言 `after >= before`，永遠成立。
+  改成攔截 `record` 數次數，並補一個「沒重試時只記一筆」的對照組——沒有對照組的話，
+  那個 3 也可能是別的東西湊出來的
+
+**下一步**
+
+- Phase 4（稽核軌跡持久化）。完整命題是三件事一起做才成立：**進來時是真的嗎**
+  （`POST /api/care-notes/confirm` 目前完全不驗證 draft 是系統發出的）、**進去後沒被改嗎**
+  （防竄改鏈）、**併發下不會遺失嗎**（目前是無鎖的 JSONL append）
+- 未做：「provider 掛掉時 threadpool 不會被佔滿」這個命題**還沒有負載測試數字支持**。
+  故障注入目前只驗到單元與整合測試層級，負載下的行為留給 Phase 5 的故障注入場景表
+- 未做：熔斷器狀態是單一 process 的記憶體狀態，多實例時每個實例各自判斷
+
+---
+
 ## 2026-07-25（續）— 營運層 Phase 2（可觀測性），外加修掉 Phase 1 的匿名限流缺陷
 
 **先修掉 Phase 1 的一個真實缺陷**

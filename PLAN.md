@@ -100,10 +100,16 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   **過程中抓到的真實洩漏**：PII 斷言測試第一次跑就發現 `httpx` 把含 `patient_id` 的
   URL 記進日誌——不是我們寫的程式碼，而是接管 root logger 連帶接管了第三方函式庫的輸出。
   已把第三方 logger 預設壓到 WARNING。
-- [ ] **Phase 3 — 韌性**
-  provider 呼叫層的單次 timeout / 指數退避 retry / 熔斷（閾值放 `configs/`）；熔斷開啟回結構化
-  拒答不是 500；mock provider 支援注入失敗率。retry 產生的成本要算進 Phase 1 的預算計數。
-  同時補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計、不涵蓋單次呼叫的缺口。
+- [x] **Phase 3 — 韌性**（2026-07-25 完成）
+  provider 呼叫層的單次 timeout / 指數退避 retry / 熔斷（閾值放 `configs/ops.yaml`）；熔斷開啟回
+  結構化拒答不是 500；mock provider 支援注入失敗率（seeded，可重現）。retry 產生的成本會補記進
+  Phase 1 的預算計數。已補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計的缺口——**單次呼叫
+  逾時下在 SDK 的 HTTP client**（真的中止請求），不是在外層包執行緒（那只會把逾時變成
+  threadpool 洩漏，而 threadpool 飽和正是 Phase 0 量到的瓶頸）。
+  設計取捨見 [ADR 0006](decisions/0006-resilience-fail-fast-not-fail-hard.md)。
+  **驗收**：注入連續失敗 → 熔斷開啟 → 結構化拒答；半開探路成功 → 恢復；半開只放一個請求出去；
+  重試成本有記（附對照組：沒重試時只記一筆）；**熔斷狀態變化在 Phase 2 的 trace 上看得到**——
+  實測三次請求但 `provider.start` 只出現兩次，第三次因熔斷根本沒打出去。
 - [ ] **Phase 4 — 稽核軌跡持久化**
   「這份稽核軌跡值得信任」是一個命題，需要同時回答三件事，拆開做會做出兩個各自不完整的機制：
   （a）**進來時是真的嗎**——`POST /api/care-notes/confirm` 目前不驗證 draft 是系統發出的；

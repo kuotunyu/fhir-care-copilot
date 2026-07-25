@@ -197,6 +197,25 @@ POST /api/chat
 設計取捨（為什麼不用 auto-instrumentation、為什麼 `/metrics` 不套認證、遮蔽為什麼用白名單）
 見 [ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)。
 
+### 韌性
+
+| 事實 | 控制 | 實際證據 |
+|---|---|---|
+| 外部 LLM provider 會超時、會 429、會回垃圾 | 單次呼叫逾時（下在 SDK，真的中止請求）＋ 指數退避重試（只重試暫時性失敗） | [`tests/test_resilience.py`](tests/test_resilience.py) |
+| provider 掛掉時每個請求都佔住一個 threadpool slot 直到逾時 | 熔斷：連續失敗達閾值就快速失敗，不再打 provider | 同上；trace 實測三次請求但 `provider.start` 只出現兩次 |
+| 重試會放大成本，而失敗的嘗試可能已經產生 token | 每次重試向每日預算補記估算成本 | 同上（附對照組：沒重試時只記一筆） |
+
+**為什麼熔斷的重點是 threadpool 而不是省錢**：7 個端點全是同步 `def`，跑在 anyio
+threadpool 的 40 個 slot 上。provider 掛掉時只要每秒 4 個請求，不到 10 秒整個
+threadpool 就被卡死的請求佔滿——**那時候連 `/api/health` 都排不進去，監控會在服務
+其實還活著的時候誤判成整台死亡**。
+
+provider 不可用時使用者拿到的是**結構化拒答**（HTTP 200 + `refused: true`），不是 500。
+前端會把它標成「服務暫時無法使用」而不是「拒答」——後者會讓使用者以為是自己的問題被
+回絕，而不是系統暫時壞掉。
+
+設計取捨見 [ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)。
+
 ### 已知限制（營運層）
 
 - 限流與預算計數都在**單一 process 的記憶體**裡。多實例部署時每個實例各有一份計數，
@@ -209,6 +228,10 @@ POST /api/chat
   主防線是全域每日預算上限，它不分身分、偽造不了；限流管的是公平性，不是防惡意
 - `patient_id` 的雜湊沒有加 salt。對合成資料足夠；換成真實資料時已知 id 集合可被暴力反查
 - 日誌只輸出到 stdout，沒有集中式收集；`/metrics` 需要自己接 Prometheus
+- 熔斷器狀態也在單一 process 的記憶體裡。多實例部署時每個實例各自判斷，
+  provider 掛掉時每個實例都要先各自失敗 N 次才會熔斷
+- **「provider 掛掉時 threadpool 不會被佔滿」這個命題還沒有負載測試數字支持**。
+  故障注入目前只驗到單元與整合測試層級，負載下的行為留給後續的故障注入場景表
 
 ## 成本
 
@@ -308,7 +331,7 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 ## 安全邊界文件
 
 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)：synthetic-only、read-only default、
-prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）、[ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（營運層控制項從領域推導）。
+prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）、[ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（營運層控制項從領域推導）、[ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)（可觀測性不外洩 PII）、[ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)（韌性：快速失敗）。
 
 ## 授權
 
