@@ -11,5 +11,9 @@ Phase 0)。**這些檔案會進 git**——是可展示的成果,不是暫存資
 - `loadtest/`（營運層 Phase 0）— k6 併發矩陣的原始 summary JSON 與 markdown 摘要。
   數字只涵蓋**服務層**(FastAPI + 工具執行 + FHIR store),用 mock provider
   以固定延遲模擬,**不含真實 LLM 供應商延遲**
+- `traces/`（營運層 Phase 2）— 一次完整 `POST /api/chat` 的 OpenTelemetry trace。
+  存在的理由是「可觀測性必須有消費端」:Jaeger 要 `docker compose --profile dev up`
+  才看得到,這份 JSON **不跑任何東西也看得到**。span 屬性經過 PII 遮蔽,
+  不含病患姓名、問題內容或完整 `patient_id`(`tests/test_pii_redaction.py` 會實際 grep 驗證)
 
 跑法見各 script 的 docstring,或 `.claude/skills/run-eval/SKILL.md`。

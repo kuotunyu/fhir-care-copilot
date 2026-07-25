@@ -45,6 +45,29 @@ build 會下載 85 MB Synthea 樣本烤進 image,第一次約數分鐘。
   測不到的(沒有經過 `.dockerignore`、沒有使用者切換)。驗證受阻時除了誠實記錄,
   還要記下**這個替代方式測不到什麼**。
 
+## 可觀測性(營運層 Phase 2)
+
+| 動作 | 指令 |
+|---|---|
+| 起 Jaeger(dev-only) | `docker compose --profile dev up -d jaeger` → <http://localhost:16686> |
+| 送 trace 過去 | 應用程式設 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` |
+| 產生 commit 用的 trace 樣本 | `uv run python scripts/export_trace_sample.py` |
+| 看指標 | `curl http://localhost:8000/metrics` |
+
+**踩過的坑**:
+
+- Jaeger 的 trace 查詢 API **一定要帶時間範圍**,`?service=X&limit=5` 會回 0 筆,
+  要寫成 `?service=X&limit=5&lookback=1h`。service 列表(`/api/services`)有東西
+  就代表 span 真的送到了,不要因為 trace 查詢是空的就以為沒收到
+- `configure_logging()` 接管 root logger 等於**連帶接管所有第三方函式庫的輸出**,
+  而那些內容我們控制不了。PII 斷言測試第一次跑就抓到 httpx 把含 `patient_id` 的
+  URL 記進日誌——第三方 logger 預設已壓到 WARNING,除錯時才用
+  `FHIR_COPILOT_THIRD_PARTY_LOG_LEVEL=DEBUG` 打開
+- 指標與 span 的路徑標籤**一律用 route 樣板**(`/api/patients/{patient_id}/summary`),
+  用原始路徑會同時炸掉 cardinality 並把病患 id 寫進指標
+- `/metrics` 必須在 `app.mount("/")` **之前**註冊,否則會被 `StaticFiles` 的
+  catch-all 吃掉,而且症狀只是回 404 或前端首頁,不會有任何提示
+
 ## 負載測試
 
 | 動作 | just | 說明 |

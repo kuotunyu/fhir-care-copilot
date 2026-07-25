@@ -126,11 +126,24 @@ flowchart LR
 （[baseline](reports/loadtest/baseline-20260725.md) vs
 [with-controls](reports/loadtest/with-controls-20260725.md)）：
 
-- **每個請求約 +1 ms**（`/api/chat` c1，p50 從 603.0 ms 到 604.1 ms，約 **0.18%**）
-- 不受守門保護的三個端點是**內建的控制組**，它們的前後差值在 ±1.6 ms 以內，
-  所以上面那 1 ms 是控制項的成本，不是量測當天的雜訊
-- c64 時 `/api/chat` 的 p50 增加 85.6 ms，但**那一格已經 threadpool 飽和**
-  （見下），延遲由排隊主導、吞吐只掉 0.5%，所以那個數字不該解讀成單次請求的成本
+| 加了什麼 | `/api/chat` c1 的 p50 | 每請求的固定成本 |
+|---|---:|---|
+| 什麼都沒加（[baseline](reports/loadtest/baseline-20260725.md)） | 603.0 ms | — |
+| ＋認證/限流/預算（[with-controls](reports/loadtest/with-controls-20260725.md)） | 604.1 ms | 約 **+1.0 ms** |
+| ＋可觀測性（[with-observability](reports/loadtest/with-observability-20260725.md)） | 603.7 ms | 約 **+0.27 ms** |
+
+- 對 `/api/chat` 這兩層加起來**量不出來**：約 1.3 ms 埋在 603 ms 的請求裡（**+0.2%**）
+- 對本來只要 0.55 ms 的唯讀端點，可觀測性那 0.27 ms 是 **+50%**
+  （`/api/health` 吞吐從 1632 降到 1140 rps）。絕對值很小但比例很大——
+  這是誠實的代價，不是可以四捨五入掉的東西
+- 併發拉高後固定成本會透過排隊放大（c64 約 +20 ms），那不是單次成本變大
+- 已知的最佳化路徑：`BaseHTTPMiddleware` 換成純 ASGI middleware。歸因量測顯示
+  存取日誌只佔 0.11 ms，其餘 0.22 ms 來自 middleware、span 與指標
+
+**這些數字怎麼保證可信**：三個不受改動影響的端點是**內建的控制組**，它們的差值在
+每個併發等級都必須彼此吻合（實測 c1 是 +0.28/+0.26/+0.29 ms）。這個機制在這個專案裡
+抓到過兩次量測污染——都是量測期間機器沒有真的閒置，詳見
+[`docs/PROGRESS.md`](docs/PROGRESS.md)。
 
 **這組數字是服務層 overhead**（FastAPI + 工具執行 + FHIR store），用 mock provider
 加固定 300 ms 延遲模擬，**不含真實 LLM 供應商的延遲**。
@@ -157,6 +170,33 @@ flowchart LR
 
 **限流與預算即使在 demo mode 也生效**——沒開認證不代表不會花錢。
 
+### 可觀測性
+
+| 事實 | 控制 | 實際證據 |
+|---|---|---|
+| 日誌與 trace 會經手病患資料 | PII 遮蔽：`patient_id` 雜湊、自由文字只記長度、病患姓名完全不記 | **grep 斷言測試**：實際跑完整條請求，捕捉所有日誌與 span，斷言真實病患姓名／原始文字／完整 id 都不在裡面（[`tests/test_pii_redaction.py`](tests/test_pii_redaction.py)） |
+| 出事時要查得動是哪一次請求 | `X-Request-ID`（沿用呼叫端帶進來的，沒有就產生），寫進該請求的每一行日誌 | [`tests/test_observability.py`](tests/test_observability.py) |
+| 要看得到錢花在哪、誰在拒答 | `/metrics`（Prometheus）：請求數、延遲分佈、provider 錯誤、拒答數、當日累計成本 | 同上 |
+
+完整 span 鏈路（四層）：
+
+```
+POST /api/chat
+  └── agent.answer
+        ├── provider.start
+        ├── tool.list_active_medications
+        └── provider.continue
+```
+
+**可觀測性必須有消費端**——產出 trace 卻沒地方看，只是換個形式的堆技術。所以兩種都有：
+
+- **可以自己跑起來看**：`docker compose --profile dev up` 起 Jaeger（`profiles: ["dev"]`，
+  正式 image 完全不含它），瀏覽 <http://localhost:16686>
+- **不跑任何東西也看得到**：[`reports/traces/`](reports/traces/) 有 commit 進 repo 的完整 trace JSON
+
+設計取捨（為什麼不用 auto-instrumentation、為什麼 `/metrics` 不套認證、遮蔽為什麼用白名單）
+見 [ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)。
+
 ### 已知限制（營運層）
 
 - 限流與預算計數都在**單一 process 的記憶體**裡。多實例部署時每個實例各有一份計數，
@@ -164,6 +204,11 @@ flowchart LR
   讓看的人知道這個數字是從什麼時候起算的
 - 前端的 API key 存在 `localStorage`，由使用者自己貼入。這不比 build-time env「更安全」，
   但它誠實：金鑰是這個瀏覽器的使用者提供的，不是我們烤進公開 JS bundle 發佈出去的
+- 匿名呼叫者依來源 IP 分桶，而 IP 取自 `X-Forwarded-For`（反向代理後面拿不到真實
+  remote address）。**那個 header 可以偽造**，所以限流對有心人是繞得過的——擋錢的
+  主防線是全域每日預算上限，它不分身分、偽造不了；限流管的是公平性，不是防惡意
+- `patient_id` 的雜湊沒有加 salt。對合成資料足夠；換成真實資料時已知 id 集合可被暴力反查
+- 日誌只輸出到 stdout，沒有集中式收集；`/metrics` 需要自己接 Prometheus
 
 ## 成本
 

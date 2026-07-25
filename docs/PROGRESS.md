@@ -6,6 +6,99 @@
 
 ---
 
+## 2026-07-25（續）— 營運層 Phase 2（可觀測性），外加修掉 Phase 1 的匿名限流缺陷
+
+**先修掉 Phase 1 的一個真實缺陷**
+
+匿名呼叫者原本全部擠進同一個限流桶。公開 demo（HF Space）沒有設定金鑰，於是**每一位訪客都是 `anonymous`**——等於全世界的訪客一起分 20 次/分鐘，兩三個人同時玩就互相卡死。限流的職責是公平性，結果卻變成訪客互相餓死彼此。
+
+改成匿名時依來源 IP 分桶（`X-Forwarded-For` 優先，反向代理後面拿不到真實 remote address）。**IP 只當記憶體內的桶 key，永遠不進日誌**（它是個人資料），對外的身分標籤一律是 `anonymous`。
+
+誠實揭露的弱點：`X-Forwarded-For` 可以偽造，所以限流對有心人繞得過。可接受，因為擋錢的主防線是全域每日預算上限（不分身分、偽造不了）。
+
+迴歸測試 `test_anonymous_visitors_do_not_starve_each_other` **實測確認過在修正前會失敗**（`assert 429 == 200`）——不然它就只是裝飾。
+
+**Phase 2 做了什麼**
+
+- `ops/logging.py`：結構化 JSON 日誌 + request id（`contextvars` 傳遞，不汙染每個函式簽名）
+- `ops/redaction.py`：PII 遮蔽，**白名單而非黑名單**（黑名單永遠會漏）
+- `ops/tracing.py`：OpenTelemetry，exporter 可選（OTLP／檔案／都不設）
+- `ops/metrics.py` + `/metrics`：請求數、延遲分佈、provider 錯誤、拒答數、營運層拒絕數、當日累計成本
+- `ops/middleware.py`：request id + HTTP root span + 指標寫在同一個切點
+- `ops/instrumented_provider.py`：provider span 與錯誤計數
+- `docker-compose.yml` 的 dev-only Jaeger profile、`scripts/export_trace_sample.py`
+- 設計取捨見 [ADR 0005](decisions/0005-observability-without-leaking-pii.md)
+
+**agent loop 只動了一處**：`_execute_tool_calls` 迴圈內加工具 span。provider 的 span 由裝飾器在外面包（`Provider` 是 Protocol 且無狀態，loop 分辨不出被包過）。**只加 span——不改控制流程、不改任何 guardrail 值、不改拒答條件。**
+
+**真實測試輸出**
+
+```
+uv run ruff check .        → All checks passed!
+uv run ruff format --check → 80 files already formatted
+uv run mypy                → Success: no issues found in 80 source files
+uv run pytest              → 195 passed（Phase 1 結束時 172,新增 23）
+```
+
+Jaeger 實測（`docker compose --profile dev up -d jaeger`）:
+
+```
+GET /api/services → {"data":["fhir-care-copilot"]}
+GET /api/traces?service=fhir-care-copilot&limit=5&lookback=1h → 2 traces
+  POST /api/chat                  8.923 ms   parent=(root)
+  agent.answer                    2.415 ms   parent=POST /api/chat
+  provider.start                  0.027 ms   parent=agent.answer
+  tool.list_active_medications    2.194 ms   parent=agent.answer
+  provider.continue               0.020 ms   parent=agent.answer
+```
+
+**PII 斷言測試第一次跑就抓到真實洩漏**
+
+```
+{"logger": "httpx2", "message": "HTTP Request: GET .../api/patients/<真實 patient_id>/summary"}
+```
+
+病患 id 進了日誌，**而且不是我們寫的程式碼造成的**。根因：`configure_logging()` 接管 root logger，連帶接管了所有第三方函式庫的輸出，而那些內容我們控制不了。正式環境同樣有這條路徑（Gemini／OpenAI SDK 內部都用 httpx）。已把第三方 logger 預設壓到 WARNING，`FHIR_COPILOT_THIRD_PARTY_LOG_LEVEL` 可在除錯時打開。
+
+**這正是「遮蔽最容易變成有寫但沒效」的實例**——只驗證遮蔽函式的回傳值，這個洩漏永遠不會被發現。
+
+**可觀測性的代價（實測）**
+
+`reports/loadtest/with-observability-*` 對 `baseline-*`，同一組參數：
+
+| 端點 | c1 | c8 | c32 | c64 | c1 RPS 變化 |
+|---|---:|---:|---:|---:|---|
+| `/api/health` | +0.28 ms | +2.12 ms | +8.02 ms | +18.92 ms | 1632 → 1140 |
+| `/api/patients` | +0.26 ms | +2.04 ms | +8.68 ms | +19.17 ms | 1670 → 1159 |
+| `/api/patients/{id}/summary` | +0.29 ms | +2.25 ms | +8.02 ms | +21.85 ms | 1126 → 820 |
+| **`/api/chat`** | **−0.38 ms** | **+0.99 ms** | **−1.36 ms** | **−58.77 ms** | 1.7 → 1.7 |
+
+（上表是相對於「已有 Phase 1 守門」那一組；相對於原始基線的總計，`/api/chat` c1 是 +0.68 ms。）
+
+**怎麼讀**：
+
+- **可觀測性每請求約 0.27 ms**。三個讀取端點在每個併發等級都彼此吻合（c1 +0.28/+0.26/+0.29、c64 +18.9/+19.2/+21.9），這種一致性就是數字可信的證據
+- 對 `/api/chat` **量不出來**——0.27 ms 埋在 603 ms 的請求裡（+0.11%），表上的正負值全是雜訊
+- 對本來只要 0.55 ms 的讀取端點，那是 **+50%,吞吐從 1632 降到 1140 rps**。絕對值很小,但比例很大——這是誠實的代價,不是可以四捨五入掉的東西
+- 併發拉高後這個固定成本會透過排隊放大(c64 約 +20 ms),那不是單次成本變大
+- 歸因:關掉每請求一行的存取日誌後 `health` 是 0.77 ms(完整觀測 0.88 ms),所以**日誌 I/O 約佔 0.11 ms,其餘 ~0.22 ms 來自 middleware、span 與指標**。已知的最佳化路徑是把 `BaseHTTPMiddleware` 換成純 ASGI middleware(Starlette 官方文件即指出前者開銷較高),但那是獨立的改動,不混進這個 Phase
+
+**決策 / 發現**
+
+- **同一個量測錯誤犯了第二次。** Phase 1 那次是量測期間跑了 mypy/pytest;這次我以為「只寫檔案不耗 CPU」,結果在量測期間寫 ADR 與 README——透過工具寫檔會經過整條 harness,並不免費。第一次的結果 `health` c1 是 1.51 ms(真值 0.84),我差點把「可觀測性讓吞吐腰斬」寫進報告
+- **兩次都是同一個機制抓到的**:控制組。這次的症狀是 `health` 與 `patients` 互相矛盾——`health` 做的事比 `patients` 少卻明顯更慢,那不可能是真的。**負載測試期間的「什麼都不做」必須是字面意義的什麼都不做**
+- **只驗證遮蔽函式的回傳值是驗不到東西的。** grep 斷言測試要對「所有輸出」做,而且要先斷言「真的有捕捉到輸出」——沒有那一條的話,輸出是空的也會讓每條斷言通過,那種測試永遠是綠的
+- **接管 root logger 等於接管第三方函式庫的輸出。** 對處理病患資料的服務,只該輸出內容由自己決定的日誌
+- 指標與 span 的路徑標籤一律用 route 樣板:原始路徑裡就有 `patient_id`,那會同時炸掉 cardinality 並把病患識別碼寫進指標
+- tracing 模組自己持有 TracerProvider 不搶全域單例——OTel 的 `set_tracer_provider` 只吃第一次呼叫,搶了就沒辦法在測試裡換 exporter,而 PII 斷言測試正需要那個能力
+
+**下一步**
+
+- Phase 3(韌性):provider 單次呼叫 timeout / 指數退避 retry / 熔斷。**熔斷狀態變化要在這個 Phase 建好的 trace 上看得到**;retry 產生的成本要算進 Phase 1 的預算計數。同時補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計、不涵蓋單次呼叫的缺口
+- 未做:Jaeger UI 截圖(這台機器的 browser pane 無法 compositing,已改用 commit 進 repo 的 trace JSON 當證據);`patient_id` 雜湊未加 salt(合成資料足夠,換真實資料需要);日誌只到 stdout
+
+---
+
 ## 2026-07-25 — 營運層 Phase 0＋1（負載測試基線、認證/限流/預算上限），外加補完 M7 從未驗證的 docker build
 
 **做了什麼**

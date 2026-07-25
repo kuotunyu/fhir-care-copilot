@@ -90,12 +90,16 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   只保護會花錢／會寫入的端點，`/api/health` 永遠免認證。前端單點注入 key + 401/429 友善訊息。
   **驗收**：無 key 401、超限 429 + `Retry-After`、超預算 429 結構化說明（不是 500）、
   `/api/health` 免認證且回報三者狀態，四種情況各有測試。
-- [ ] **Phase 2 — 可觀測性**
+- [x] **Phase 2 — 可觀測性**（2026-07-25 完成）
   request ID、結構化 JSON 日誌 + PII 遮蔽、OpenTelemetry tracing、`/metrics`。
   **必須有消費端**：dev-only 的 Jaeger profile + commit 進 repo 的 trace 樣本——
   產出沒人讀的 metrics 只是換個形式的堆技術。
-  **驗收**：完整鏈路 trace 看得到；**PII grep 斷言測試通過**（實際跑一次請求，斷言病患姓名、
-  原始 `note_text`、完整 `patient_id` 都不在任何日誌與 trace 輸出裡）；跟 Phase 0 基線比 overhead。
+  **驗收**：四層 span 鏈路（HTTP → agent → 工具 → provider）在 Jaeger 上看得到；
+  **PII grep 斷言測試通過**（實際跑完整請求，捕捉所有日誌與 span 輸出後 grep 真實病患值）；
+  跟 Phase 0 基線比 overhead。設計取捨見 [ADR 0005](decisions/0005-observability-without-leaking-pii.md)。
+  **過程中抓到的真實洩漏**：PII 斷言測試第一次跑就發現 `httpx` 把含 `patient_id` 的
+  URL 記進日誌——不是我們寫的程式碼，而是接管 root logger 連帶接管了第三方函式庫的輸出。
+  已把第三方 logger 預設壓到 WARNING。
 - [ ] **Phase 3 — 韌性**
   provider 呼叫層的單次 timeout / 指數退避 retry / 熔斷（閾值放 `configs/`）；熔斷開啟回結構化
   拒答不是 500；mock provider 支援注入失敗率。retry 產生的成本要算進 Phase 1 的預算計數。

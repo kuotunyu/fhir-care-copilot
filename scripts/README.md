@@ -10,6 +10,8 @@
 - `run_loadtest.py`（營運層 Phase 0）— 起後端、跑 k6 併發矩陣、收 summary，
   輸出到 `reports/loadtest/`
 - `loadtest/`（營運層 Phase 0）— k6 腳本
+- `export_trace_sample.py`（營運層 Phase 2）— 跑一次完整 `POST /api/chat`，把 trace
+  匯出成 JSON 存進 `reports/traces/`（commit 進 repo 的可觀測性證據）
 - `publish_to_hf.py`（M7）— 發布到 Hugging Face Docker Space，**預設 dry-run**，
   要加 `--execute` 才會真的呼叫 HF API
 - `git-hooks/`（M0）— repo 內建 git hooks（`just hooks` 啟用，勿用 `pre-commit install`）
