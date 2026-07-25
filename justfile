@@ -42,6 +42,18 @@ precommit:
 hooks:
     git config core.hooksPath scripts/git-hooks
 
+# ---- 營運層:負載測試 ----
+
+# 負載測試基線(需要 k6:winget install --id GrafanaLabs.k6 -e)。
+# 自己起一個 uvicorn、跑完 configs/ops.yaml 定義的整個併發矩陣、輸出到
+# reports/loadtest/。約需 30 分鐘,期間機器盡量不要跑別的東西。
+loadtest-baseline:
+    uv run python scripts/run_loadtest.py --label baseline
+
+# 加完控制項之後的對照組。**必須用同一份 configs/ops.yaml**,否則兩組數字不可比。
+loadtest-final:
+    uv run python scripts/run_loadtest.py --label final
+
 # ---- M4:前端(app/) ----
 
 # 前端裝依賴(用 --prefix 而非 cd app:just 預設每行是獨立殼層呼叫,

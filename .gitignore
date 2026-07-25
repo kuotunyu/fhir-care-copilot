@@ -25,3 +25,7 @@ Thumbs.db
 
 # audit log(本地執行產物,不進 git)
 /audit_log/
+
+# 負載測試的暫存檔(run_loadtest.py 正常結束時會自己清掉;這行是被中斷時的保險。
+# reports/loadtest/ 底下的報表本身要進 git)
+/reports/loadtest/_*

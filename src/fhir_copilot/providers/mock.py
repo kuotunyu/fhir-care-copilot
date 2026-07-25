@@ -4,15 +4,23 @@ CI 與離線開發的預設 provider(configs/models.yaml `default_provider: mock
 不是「假裝聰明的 LLM」——只依問題關鍵字選一個唯讀工具、執行一輪、把
 deterministic tool 回傳的結構化結果組成文字答案,讓整條 agent loop
 (guardrails、evidence、拒答、cost=0)可以在沒有金鑰的情況下被完整測試。
+
+可設定延遲(``FHIR_COPILOT_MOCK_LATENCY_MS``,預設 0):負載測試需要模擬真實
+provider 的網路延遲,否則 ``/api/chat`` 快得不真實,量到的併發行為與正式環境
+無關。**預設 0 時行為與沒有這個參數時完全相同**——這個旋鈕只在量測時才打開。
 """
 
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Sequence
 from typing import Any
 
 from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.tools.registry import ToolSpec
+
+_LATENCY_ENV = "FHIR_COPILOT_MOCK_LATENCY_MS"
 
 # 依序比對;第一個命中的關鍵字決定要呼叫的工具
 _KEYWORD_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -108,16 +116,40 @@ _RENDERERS: dict[str, Any] = {
 }
 
 
+def _resolve_latency_ms(latency_ms: int | None) -> int:
+    """明確傳入優先;否則讀環境變數;都沒有就 0(不延遲)。"""
+    if latency_ms is not None:
+        return max(0, latency_ms)
+    raw = os.environ.get(_LATENCY_ENV)
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        # 設錯值不該讓服務起不來——這是量測用的旋鈕,不是安全邊界
+        return 0
+
+
 class MockProvider:
     """deterministic mock;``model_id`` 對應 configs/pricing.yaml 的 0 元項目。"""
 
-    def __init__(self, *, model_id: str = "mock-deterministic") -> None:
+    def __init__(
+        self, *, model_id: str = "mock-deterministic", latency_ms: int | None = None
+    ) -> None:
         self.model_id = model_id
+        # 每次「provider 呼叫」各睡這麼久。agent loop 一輪問答會呼叫兩次
+        # (start + continue_with_tool_results),所以端到端延遲約為兩倍。
+        self.latency_ms = _resolve_latency_ms(latency_ms)
+
+    def _sleep(self) -> None:
+        if self.latency_ms > 0:
+            time.sleep(self.latency_ms / 1000)
 
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]
     ) -> ProviderStep:
         del system_prompt  # mock 不需要
+        self._sleep()
         tool_name = _select_tool(user_message)
         call = RequestedToolCall(call_id="mock-call-1", tool_name=tool_name, arguments={})
         return ProviderStep(
@@ -132,6 +164,7 @@ class MockProvider:
         self, state: Any, outcomes: Sequence[ToolCallOutcome]
     ) -> ProviderStep:
         del state
+        self._sleep()
         if not outcomes:
             answer = "沒有可用的工具結果,無法回答。"
         else:
