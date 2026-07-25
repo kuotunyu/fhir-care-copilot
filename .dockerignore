@@ -15,3 +15,7 @@ docs
 tests
 reports
 *.md
+# README.md 例外:pyproject.toml 的 readme 欄位指向它,hatchling 在 uv sync
+# 建置本專案 wheel 時一定要讀得到。被 *.md 排除掉的話,即使 Dockerfile 明確
+# 列名 COPY 也會失敗(docker 會回 "/README.md": not found)。
+!README.md

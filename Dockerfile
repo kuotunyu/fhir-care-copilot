@@ -41,7 +41,12 @@ USER user
 # build 時先下載一份 100 位病患的 demo 資料,烤進 image——沒有 API 金鑰時
 # provider 會自動退回 mock demo mode(見 src/fhir_copilot/api/dependencies.py),
 # 訪客一開容器就能看到真實(合成)資料,不用等 runtime 才下載
-RUN uv run python scripts/download_or_generate_synthea.py --subset 100 \
+#
+# 這裡直接用 venv 裡的 python(PATH 已指向 /app/.venv/bin),不走 `uv run`,理由有二:
+# 1. 上面的 uv sync 是以 root 執行的,會把 uv cache 建在 root 名下;切成 USER user
+#    之後 `uv run` 要寫同一個 cache 會 Permission denied(實測 exit code 2)
+# 2. `uv run` 預設會補齊 dev 依賴——那會把 pytest/mypy/ruff 裝進正式 image
+RUN python scripts/download_or_generate_synthea.py --subset 100 \
     && rm -rf data/raw
 
 ENV FHIR_COPILOT_DATA_DIR=/app/data/processed/subset_100
@@ -49,4 +54,6 @@ ENV FHIR_COPILOT_DATA_DIR=/app/data/processed/subset_100
 # HF Docker Space 預設對外埠是 7860(PLAN.md §7 查證)
 EXPOSE 7860
 
-CMD ["uv", "run", "uvicorn", "fhir_copilot.api.app:app", "--host", "0.0.0.0", "--port", "7860"]
+# 同樣直接用 venv 裡的 uvicorn,不走 `uv run`:容器啟動時不該再嘗試解析依賴、
+# 不該需要網路,也不該把 dev 依賴補進來。環境已經由 uv sync --locked --no-dev 定死。
+CMD ["uvicorn", "fhir_copilot.api.app:app", "--host", "0.0.0.0", "--port", "7860"]
