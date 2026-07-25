@@ -13,6 +13,7 @@ provider 的網路延遲,否則 ``/api/chat`` 快得不真實,量到的併發行
 from __future__ import annotations
 
 import os
+import random
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -21,6 +22,20 @@ from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCal
 from fhir_copilot.tools.registry import ToolSpec
 
 _LATENCY_ENV = "FHIR_COPILOT_MOCK_LATENCY_MS"
+_FAILURE_RATE_ENV = "FHIR_COPILOT_MOCK_FAILURE_RATE"
+_FAILURE_SEED_ENV = "FHIR_COPILOT_MOCK_FAILURE_SEED"
+
+
+class MockProviderFailure(RuntimeError):
+    """注入的 provider 失敗(故障注入用)。
+
+    訊息刻意含 "timeout" 字樣,好讓 ops/resilience.py 的 is_retryable 判定為
+    可重試——注入的目的就是要走完整條重試與熔斷路徑。
+    """
+
+    def __init__(self) -> None:
+        super().__init__("injected mock provider failure (simulated timeout)")
+
 
 # 依序比對;第一個命中的關鍵字決定要呼叫的工具
 _KEYWORD_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -130,26 +145,65 @@ def _resolve_latency_ms(latency_ms: int | None) -> int:
         return 0
 
 
+def _resolve_failure_rate(failure_rate: float | None) -> float:
+    """0.0 = 永不失敗(預設,行為與沒有這個功能時相同)。"""
+    if failure_rate is not None:
+        return min(1.0, max(0.0, failure_rate))
+    raw = os.environ.get(_FAILURE_RATE_ENV)
+    if not raw:
+        return 0.0
+    try:
+        return min(1.0, max(0.0, float(raw)))
+    except ValueError:
+        return 0.0
+
+
+def _resolve_seed(seed: int | None) -> int | None:
+    if seed is not None:
+        return seed
+    raw = os.environ.get(_FAILURE_SEED_ENV)
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 class MockProvider:
     """deterministic mock;``model_id`` 對應 configs/pricing.yaml 的 0 元項目。"""
 
     def __init__(
-        self, *, model_id: str = "mock-deterministic", latency_ms: int | None = None
+        self,
+        *,
+        model_id: str = "mock-deterministic",
+        latency_ms: int | None = None,
+        failure_rate: float | None = None,
+        failure_seed: int | None = None,
     ) -> None:
         self.model_id = model_id
         # 每次「provider 呼叫」各睡這麼久。agent loop 一輪問答會呼叫兩次
         # (start + continue_with_tool_results),所以端到端延遲約為兩倍。
         self.latency_ms = _resolve_latency_ms(latency_ms)
+        # 故障注入(Phase 3):預設 0.0 = 永不失敗,行為與沒有這個功能時相同。
+        # 給定 seed 時失敗序列可重現——故障注入場景要能重跑才有意義。
+        self.failure_rate = _resolve_failure_rate(failure_rate)
+        self._random = random.Random(_resolve_seed(failure_seed))
 
     def _sleep(self) -> None:
         if self.latency_ms > 0:
             time.sleep(self.latency_ms / 1000)
+
+    def _maybe_fail(self) -> None:
+        if self.failure_rate > 0 and self._random.random() < self.failure_rate:
+            raise MockProviderFailure
 
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]
     ) -> ProviderStep:
         del system_prompt  # mock 不需要
         self._sleep()
+        self._maybe_fail()
         tool_name = _select_tool(user_message)
         call = RequestedToolCall(call_id="mock-call-1", tool_name=tool_name, arguments={})
         return ProviderStep(
@@ -165,6 +219,7 @@ class MockProvider:
     ) -> ProviderStep:
         del state
         self._sleep()
+        self._maybe_fail()
         if not outcomes:
             answer = "沒有可用的工具結果,無法回答。"
         else:

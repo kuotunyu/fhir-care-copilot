@@ -40,10 +40,15 @@ def write_ops_config(
     requests_per_minute: int = 600,
     burst: int = 600,
     daily_limit_usd: float = 1.0,
+    max_retries: int = 2,
+    failure_threshold: int = 5,
+    recovery_seconds: float = 30.0,
+    half_open_successes: int = 2,
 ) -> Path:
     """產生一份測試用 ops.yaml,回傳路徑。
 
     限流預設放得很寬,免得不是在測限流的測試被誤擋;要測限流的測試自己調低。
+    退避時間刻意設成近乎 0:測試要驗的是「有沒有重試」,不是「真的睡了 0.5 秒」。
     """
     config = {
         "auth": {"header_name": "X-API-Key"},
@@ -52,6 +57,16 @@ def write_ops_config(
             "daily_limit_usd": daily_limit_usd,
             "estimated_input_tokens_per_request": 2000,
             "estimated_output_tokens_per_request": 300,
+        },
+        "resilience": {
+            "provider_timeout_seconds": 12.0,
+            "max_retries": max_retries,
+            "backoff_initial_seconds": 0.001,
+            "backoff_multiplier": 2.0,
+            "backoff_max_seconds": 0.005,
+            "failure_threshold": failure_threshold,
+            "recovery_seconds": recovery_seconds,
+            "half_open_successes": half_open_successes,
         },
         "load_test": {
             "mock_latency_ms": 0,
