@@ -47,7 +47,7 @@
   小樣本先跑（兩模型各 30 題）→ `--full-eval` 開關已備妥（受 Gemini 免費層 15 req/min 限制，用 `--pace-seconds` 控速，見 skill 文件）。產出 `reports/eval_gemini.json`、`reports/eval_openai.json`、`reports/model_comparison.md`（由 `scripts/generate_model_comparison.py` 從真實 JSON 自動產生，不手 key 數字）。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
   **驗收**：真實跑出的數字與成本紀錄（見下方）；過程中發現並修正 injection-resistance 判準的假陽性 bug（拒絕句本身提到違禁詞會被誤判），修正後仍人工核閱全部逐字稿附進報告，不只信自動判準。
   **真實結果**：Gemini(`gemini-3.1-flash-lite`)citation validity 100%、injection resistance 100%、p50 延遲 1342ms、平均成本 $0.00048/題；OpenAI(`gpt-5.4-mini`)citation validity 100%、injection resistance 66.7%(人工核閱後判斷可能是判準誤判，逐字稿顯示未真正服從）、p50 延遲 2404ms、平均成本 $0.00145/題。兩者 field exact match 皆約 54%，人工核閱發現是因為兩個模型都會把英文藥名/診斷翻譯成正體中文或改寫格式（非答錯）。總花費 $0.058。
-- [x] **M7 — 打包與發布準備**（2026-07-24 完成，`docker build` 現場驗證受阻，已用等效方式驗證，見下方說明）
+- [x] **M7 — 打包與發布準備**（2026-07-24 完成；`docker build` 當時受阻，**2026-07-25 已補完真正的 image build 驗證並修正三個真實 bug**，見下方）
   Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml、`.dockerignore`；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**，8 個新測試）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
   **驗收現況**：
   - `uv run pytest`（128 通過）、`ruff check .`、`mypy .` 全綠
@@ -57,6 +57,60 @@
     1. 靜態複查時發現一個真實 bug——原本的 layer 順序是先 `COPY pyproject.toml uv.lock` 再 `RUN uv sync`，但 `pyproject.toml` 的 `[project]` 有 `readme = "README.md"` 且 hatchling 需要 `src/fhir_copilot/` 才能把本專案自己 build 成套件；用臨時目錄重現(只放 pyproject.toml + uv.lock，不放 README.md/src/)後 `uv sync --locked --no-dev` **真的失敗**(`OSError: Readme file does not exist: README.md`)。已修正 Dockerfile：`README.md` 與 `src/` 提前到 `uv sync` 之前一起複製，修正後重現通過。
     2. 用臨時目錄完整重現 Dockerfile 的檔案佈局(`pyproject.toml`/`uv.lock`/`README.md`/`src/`/`configs/`)、`uv sync --locked --no-dev` 成功、以 `FHIR_COPILOT_PROVIDER=mock`(等同容器內無金鑰自動退回 mock 的路徑)+ `FHIR_COPILOT_DATA_DIR` 指向 committed fixtures 啟動 `uvicorn`，實測 `/api/health`(回傳 `demo_mode:true`)、`/api/patients`、`/api/chat`(真實跑完 agent loop、回傳含 evidence 的正確答案)皆正常
   - 這個環境問題不影響 HF Docker Space 實際部署(HF 的 build 環境是全新的 Linux runner，不會有這台機器 AppData 底下的殘留檔案)，但**本機 `docker build` 本身尚未經過真正的 image build 驗證**，這是誠實記錄的已知限制，不宣稱已完整驗證。
+  - **2026-07-25 補驗**：Docker daemon 恢復可用後真的跑了一次 `docker build`，**當時的 Dockerfile 建不起來**——等效驗證繞過了三件只有真正 build 才會遇到的事，各自都是真實 bug：
+    1. `.dockerignore` 有 `*.md`，把 `README.md` 一起排除掉了。被 `.dockerignore` 排除的檔案，即使 Dockerfile 明確列名 `COPY` 也複製不進去（`"/README.md": not found`）。**先前的等效驗證用的是臨時目錄，根本沒有經過 `.dockerignore`，所以測不到。** 修正：`.dockerignore` 加 `!README.md` 例外並註明理由。
+    2. `RUN uv run python scripts/download_or_generate_synthea.py` 在 `USER user` 之後執行，但 uv cache 是前面以 root 身分跑 `uv sync` 時建立的 → `Permission denied (os error 13)`。
+    3. 同一行的 `uv run` 還會補齊 dev 依賴，等於把 pytest/mypy/ruff/pre-commit 裝進正式 image；`CMD` 用的也是 `uv run`，容器每次啟動都會再嘗試解析依賴。修正：兩處都改成直接用 venv 內的執行檔（`ENV PATH` 已指向 `/app/.venv/bin`）。
+  - **修正後的實測結果**：`docker build` 成功；`docker compose up -d` 後 `GET /api/health` 回 `{"status":"ok","provider":"mock","model_id":"mock-deterministic","demo_mode":true,"patient_count":100}`；`GET /api/patients` 列出 100 位；`POST /api/chat` 走完整條 agent loop 並回傳含 `Patient/5cbc121b` name/gender/birthDate 三筆 evidence 的正確答案。image 大小 **486 MB**，已確認 site-packages 內沒有任何 dev 依賴。CI 也加了 `docker` job（build + 起容器打 `/api/health`），讓這件事之後由機器守著，不再依賴本機環境。
+  - **教訓**：等效驗證比跳過驗證有價值（它當時確實抓到 layer 順序的 bug），但它會系統性地漏掉「被繞過的那一層」——這次漏掉的正好就是 `.dockerignore` 與容器內的使用者切換。所以驗證受阻時除了誠實記錄，還要記下**這個替代方式測不到什麼**。
+
+### 3.1 營運層（M0–M7 之後的延伸）
+
+M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的服務」：認證、可觀測性、韌性、
+稽核持久化、負載證據。
+
+**控制項一律從領域推導，不從技術清單推導。** 這個服務有三個事實，每個直接推導出一組
+必要的控制；講不出領域理由的控制項就不做：
+
+| 事實 | 推導出的控制 |
+|---|---|
+| `/api/chat` 每次呼叫都花真錢，而端點完全開放 | API key 認證、每 key 限流、每日預算上限 |
+| 日誌與 trace 會經手病患資料 | 結構化日誌的 PII 遮蔽、trace redaction |
+| 會寫照護記錄的稽核日誌 | 可信任的稽核軌跡（來源可驗證 + 防竄改 + 併發不遺失） |
+
+- [x] **Phase 0 — 基線量測**（2026-07-25 完成）
+  引入 k6；mock provider 支援 `FHIR_COPILOT_MOCK_LATENCY_MS` 可設定延遲（預設 0，行為不變）；
+  對 `/api/health`、`/api/patients`、`/api/patients/{id}/summary`、`/api/chat` 跑 c1→c64 併發矩陣。
+  **這一階段不改任何被量測的請求路徑**（FastAPI app、middleware、路由、工具執行、FHIR store），
+  基線的意義就是「加東西之前」。
+  **驗收**：`reports/loadtest/` 有可重跑的基線數字；參數全部出自 `configs/ops.yaml`。
+- [ ] **Phase 1 — 認證與成本控制**
+  API key 認證（`FHIR_COPILOT_REQUIRE_AUTH` 預設 `false`，放行但 `/api/health` 標明未啟用）；
+  per-key in-process token bucket 限流；每日預算上限（沿用 `estimate_cost_usd`，缺單價照樣 raise）。
+  只保護會花錢／會寫入的端點，`/api/health` 永遠免認證。前端單點注入 key + 401/429 友善訊息。
+  **驗收**：無 key 401、超限 429 + `Retry-After`、超預算 429 結構化說明（不是 500）、
+  `/api/health` 免認證且回報三者狀態，四種情況各有測試。
+- [ ] **Phase 2 — 可觀測性**
+  request ID、結構化 JSON 日誌 + PII 遮蔽、OpenTelemetry tracing、`/metrics`。
+  **必須有消費端**：dev-only 的 Jaeger profile + commit 進 repo 的 trace 樣本——
+  產出沒人讀的 metrics 只是換個形式的堆技術。
+  **驗收**：完整鏈路 trace 看得到；**PII grep 斷言測試通過**（實際跑一次請求，斷言病患姓名、
+  原始 `note_text`、完整 `patient_id` 都不在任何日誌與 trace 輸出裡）；跟 Phase 0 基線比 overhead。
+- [ ] **Phase 3 — 韌性**
+  provider 呼叫層的單次 timeout / 指數退避 retry / 熔斷（閾值放 `configs/`）；熔斷開啟回結構化
+  拒答不是 500；mock provider 支援注入失敗率。retry 產生的成本要算進 Phase 1 的預算計數。
+  同時補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計、不涵蓋單次呼叫的缺口。
+- [ ] **Phase 4 — 稽核軌跡持久化**
+  「這份稽核軌跡值得信任」是一個命題，需要同時回答三件事，拆開做會做出兩個各自不完整的機制：
+  （a）**進來時是真的嗎**——`POST /api/care-notes/confirm` 目前不驗證 draft 是系統發出的；
+  （b）**進去後沒被改嗎**——防竄改鏈與驗證程式；
+  （c）**併發下不會遺失嗎**——目前是無鎖的 JSONL append。
+  **必須可選**：無 `DATABASE_URL` 即退回檔案模式，`/api/health` 標明目前用哪一種。
+  **不把 FHIR 資料搬進資料庫**——那會把「LLM 物理上拿不到資料庫」這條線弄糊。
+- [ ] **Phase 5 — 最終負載測試與對照**
+  重跑 Phase 0 的矩陣（同樣的 mock 延遲），產出前後對照表：每個控制項讓 p50/p95/p99 各增加多少。
+  **兩軌數字分清楚不混用**：服務層 overhead（mock，c1→c64）與端到端實測（真 provider，少量樣本，
+  明寫樣本數與花費）。故障注入場景表。
 
 ## 4. 架構
 

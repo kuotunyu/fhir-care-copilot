@@ -3,6 +3,9 @@
 # READ_ONLY_TOOLS)——這裡刻意不重複列工具名稱,避免設定檔與程式碼各說各話。
 
 max_tool_rounds: 6 # 單次對話最多幾輪「LLM 要求呼叫工具 → 執行 → 餵回」
-timeout_seconds: 30 # 單次 provider 呼叫逾時
+# 整個 agent loop 的累計時間上限,在每輪工具呼叫前檢查一次(agent/loop.py)。
+# 注意這不是單次 provider 呼叫的逾時——provider adapter 目前沒有任何 timeout,
+# 所以卡在單次 API 呼叫時這個值攔不到。單次呼叫逾時待營運層 Phase 3 補上。
+timeout_seconds: 30
 max_input_chars: 4000 # 使用者輸入長度上限(防過長輸入拖垮 loop/預算)
-max_output_tokens: 1024 # 單次回答輸出上限
+max_output_tokens: 1024 # 單次回答輸出上限(目前僅載入,尚未傳給任何 provider)

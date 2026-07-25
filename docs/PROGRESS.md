@@ -6,6 +6,126 @@
 
 ---
 
+## 2026-07-25 — 營運層 Phase 0＋1（負載測試基線、認證/限流/預算上限），外加補完 M7 從未驗證的 docker build
+
+**做了什麼**
+
+先處理三件比新功能優先的事，再做 Phase 0/1：
+
+1. **`docker build` 補驗**（M7 當時受環境問題阻擋，只做了等效驗證）。Docker daemon 恢復後真的跑一次，**當時的 Dockerfile 建不起來**，抓到三個真實 bug：
+   - `.dockerignore` 的 `*.md` 把 `README.md` 一起排除，而 `pyproject.toml` 的 `readme` 欄位需要它才能 build wheel。**被 `.dockerignore` 排除的檔案，即使 `COPY` 明確列名也複製不進去**（`"/README.md": not found`）
+   - `RUN uv run python scripts/download_or_generate_synthea.py` 在 `USER user` 之後執行，但 uv cache 是前面以 root 跑 `uv sync` 時建的 → `Permission denied (os error 13)`
+   - 同一行的 `uv run` 還會補齊 dev 依賴（把 pytest/mypy/ruff 裝進正式 image）；`CMD` 也是 `uv run`，容器每次啟動都會再嘗試解析依賴。兩處都改成直接用 venv 裡的執行檔（`ENV PATH` 已指向 `/app/.venv/bin`）
+2. **CI 加 `windows-latest` matrix**（原本只有 `ubuntu-latest`，開發機是 Windows 卻測不到 Windows 專屬問題），順帶修掉兩個因此會暴露的跨平台問題：eval smoke 步驟寫死 `/tmp`（Windows runner 沒有）、以及 `run: |` 的反斜線續行是 bash 語法（Windows runner 預設 pwsh 會解析失敗）。另外把 lint 拆成兩個 step——pwsh 只用最後一行的 exit code 決定 step 成敗，寫成兩行的話 `ruff check` 失敗會被後面成功的 `ruff format` 蓋掉。再加一個 ubuntu-only 的 `docker` job（build + 起容器打 `/api/health`），讓這件事之後由機器守著
+3. **修正 `timeout_seconds` 的語意描述**：`configs/guardrails.yaml` 註解寫「單次 provider 呼叫逾時」，實作（`loop.py:151`）卻是整個 loop 的累計牆鐘、且只在每輪工具呼叫前檢查一次；provider adapter 內完全沒有 timeout。**只改文字不改行為**，真正的單次呼叫逾時留給 Phase 3。順帶補上 `scripts/README.md` 與 `reports/README.md` 的過期內容
+
+**Phase 0（基線量測）**
+
+- 引入 k6 2.1.0；`MockProvider` 加 `FHIR_COPILOT_MOCK_LATENCY_MS`（預設 0，不設就與沒有這個功能時逐字相同）
+- 新增 `configs/ops.yaml`、`scripts/loadtest/api.js`、`scripts/run_loadtest.py`、`just loadtest-baseline`
+- **範圍界線**：不改「被量測的請求路徑」（FastAPI app、middleware、路由、工具執行、FHIR store）。mock 的延遲旋鈕不在那條路徑上，它是量測儀器
+- 量測期間實測確認過受測後端跑的是加守門**之前**的程式碼：`GET /api/health` 回的是舊的 5 欄位版本，沒有 `auth_required`/`budget_*`。這讓「基線未經修改」是可驗證的事實，不是宣稱
+
+**Phase 1（認證與成本控制）**
+
+- 新增 `src/fhir_copilot/ops/`：`config`（ops.yaml 載入）、`identity`（API key 解析與比對）、`ratelimit`（token bucket）、`budget`（每日成本）、`errors`（結構化拒絕）
+- 用 `Depends` 不用 middleware，只掛在 `/api/chat` 與兩個 care-note 端點上；`/api/health` 天然免疫
+- 三種降級狀態全部在 `/api/health` 回報（沿用 provider 退回 mock 時回報 `demo_mode` 的模式）
+- 前端：`api.ts` 的 `request<T>()` 單點注入金鑰（localStorage）、`describeApiError()` 把後端拒絕翻成使用者看得懂的話、StatusBar 的金鑰控制項
+- 設計理由全部寫進 [ADR 0004](decisions/0004-ops-controls-from-domain.md)
+
+**真實測試輸出**
+
+```
+uv run ruff check .        → All checks passed!
+uv run ruff format --check → 71 files already formatted
+uv run mypy                → Success: no issues found in 71 source files
+uv run pytest              → 166 passed in 2.03s（原 128 + 38 個新測試）
+npm --prefix app run lint  → oxlint 無輸出（通過）
+npm --prefix app run build → tsc -b && vite build 成功，208.91 kB / gzip 65.97 kB
+```
+
+docker（修正後）：
+
+```
+docker build -t fhir-care-copilot:local .   → 成功
+docker compose up -d + curl /api/health
+  → {"status":"ok","provider":"mock","model_id":"mock-deterministic","demo_mode":true,"patient_count":100}
+POST /api/chat（基本資料）
+  → refused:false，evidence = Patient/5cbc121b 的 name / gender / birthDate 三筆
+image 大小 486 MB；site-packages 內確認沒有 pytest/mypy/ruff/pre_commit/huggingface
+```
+
+CI 的 Windows 相容性本機能驗到的部分（真正的 CI 綠要等 push 後才知道，這裡不宣稱）：
+
+```
+（PowerShell）uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --out "$env:TEMP/..."
+  → tool-selection 100.0% / citation validity 100.0% / injection resistance 100.0%，exit 0
+```
+
+前端三條路徑用瀏覽器實跑（`REQUIRE_AUTH=true` + 一把測試金鑰）：
+
+```
+未設金鑰送出問題 → 「這項功能需要 API key。請在上方狀態列貼入你的金鑰後再試一次。」
+貼上金鑰後送出   → 200，答案附 cost badge（mock-deterministic·3→12 tok·US$0.0000）
+連續打滿限額     → 429 + Retry-After: 3，UI 顯示「查詢太頻繁了,請等 1 秒後再試。」
+429 回應主體     → {"detail":"...", "error_code":"rate_limited", "retry_after_seconds":3, "requests_per_minute":20}
+375px 檢查       → scrollWidth == clientWidth（無橫向溢位）；console 無錯誤
+```
+
+**負載測試：基線**
+
+完整數字見 [`reports/loadtest/baseline-20260725.md`](../reports/loadtest/baseline-20260725.md)。摘要（mock provider 固定 300 ms 延遲、單一 uvicorn worker、100 位病患）：
+
+| 端點 | c1 p50 | c64 p50 | c64 p99 | c64 RPS |
+|---|---:|---:|---:|---:|
+| `/api/health` | 0.6 ms | 28.3 ms | 39.6 ms | 2225 |
+| `/api/patients` | 0.6 ms | 26.4 ms | 30.0 ms | 2412 |
+| `/api/patients/{id}/summary` | 0.9 ms | 45.4 ms | 50.6 ms | 1394 |
+| `/api/chat` | 603.0 ms | 952.2 ms | 1251.0 ms | 64.6 |
+
+冷啟動：首次 `/api/health`（含 store 建索引 100 位病患）**2452 ms**；首次 summary 22.9 ms。全部階梯錯誤率 0%。
+
+**負載測試：加上 Phase 1 控制項之後的對照**
+
+見 [`reports/loadtest/with-controls-20260725.md`](../reports/loadtest/with-controls-20260725.md)。同一組參數、同樣的 300 ms mock 延遲，只跑 c1/c8/c32/c64 取樣。
+
+| 端點 | 受守門 | c1 p50 差 | c8 p50 差 | c32 p50 差 | c64 p50 差 | c64 RPS 差 |
+|---|:--:|---:|---:|---:|---:|---:|
+| `/api/health` | 否 | +0.01 ms | +0.23 ms | +1.62 ms | +1.37 ms | −4.8% |
+| `/api/patients` | 否 | −0.00 ms | −0.10 ms | −0.20 ms | +0.11 ms | −0.5% |
+| `/api/patients/{id}/summary` | 否 | −0.04 ms | −0.16 ms | +0.08 ms | −0.84 ms | +2.2% |
+| **`/api/chat`** | **是** | **+1.06 ms** | **+4.87 ms** | **+7.09 ms** | **+85.59 ms** | **−0.5%** |
+
+**怎麼讀這組數字**：
+
+- **每個請求的守門成本約 1 ms**（c1，沒有排隊時）。對照組在 c1 的差值是 +0.01 / −0.00 / −0.04 ms，所以雜訊底大約 ±0.05 ms——`/api/chat` 的 +1.06 ms 是它的 20 倍，是真的訊號不是雜訊。相對於 603 ms 的請求約 **0.18%**
+- c8 / c32 的 +4.9 / +7.1 ms 是守門的工作也要跟請求搶 threadpool slot
+- **c64 的 +85.6 ms 不能解讀成「認證讓每個請求慢 86 ms」**。那一格已經 threadpool 飽和，延遲由排隊主導；同一格的吞吐只掉 0.5%（64.6 → 64.3 rps），p99 也只 +3%。飽和點上的中位數不是穩定的單次成本指標，throughput 才是
+
+**決策 / 發現**
+
+- **量到了 threadpool 飽和點，而且數字對得起來。** `/api/chat` 在 c32 以前 p50 穩定在 ~609 ms（≈ 2 × 300 ms，因為 agent loop 一輪問答呼叫 provider 兩次），到 c64 跳到 952 ms、p99 從 628 ms 跳到 1251 ms、RPS 卡在 64.6。7 個端點全是同步 `def`，FastAPI 丟進 anyio threadpool（預設 40 threads），所以理論吞吐上限是 40 ÷ 0.6s = **66.7 rps**——實測 64.6。這不是「效能不好」，是**已知且可解釋的架構特性**：阻塞式 provider 呼叫會佔住 threadpool slot。要提高就是改 async provider 或加 worker，兩者都超出這次範圍，記錄下來即可
+- **「用等效方式驗證」會系統性地漏掉被繞過的那一層。** M7 當時用臨時目錄重現 Dockerfile 的檔案佈局，確實抓到 layer 順序的 bug，但它沒有經過 `.dockerignore`、也沒有容器內的使用者切換——這次真正 build 抓到的三個 bug，全都落在那兩個被繞過的地方。**驗證受阻時除了誠實記錄，還要記下「這個替代方式測不到什麼」**
+- **限流是公平性控制，預算是帳號保護控制，兩者刻意分開**：限流每個 key 一個 bucket（一個呼叫者不該吃光服務），預算全 process 累計（會被燒光的是同一個 API 帳號的額度）
+- **`estimate_cost_usd` 的 `KeyError` 不 catch**。守門這一層如果把它當 0 元，預算上限就變成裝飾品。副作用是它現在在**花錢之前**就炸，比原本在 agent loop 最後才炸更早
+- **設定矛盾時 fail closed**：`REQUIRE_AUTH=true` 但沒設定任何金鑰 → 全部擋下。fail open 等於「以為有保護，其實沒有」
+- **前端金鑰用 UI 輸入 + localStorage 而非 build-time env**：後者會把金鑰烤進公開的 JS bundle，對一個以安全紀律為賣點的專案是自相矛盾的
+- **瀏覽器實測時發現一個真實可用性問題並修掉**：服務要求認證但這台瀏覽器還沒設金鑰時，金鑰控制項原本是收合的——使用者得先送出一次被擋、再自己找到那個摺疊區塊才知道要做什麼，那是 PRODUCT.md 明講要避免的猜測成本。改成該情況自動展開，已設金鑰時維持收合
+- 受測後端在對照量測時跑在「限流與預算調到不可能觸發」的設定下（由 `run_loadtest.py` 產生臨時 ops.yaml）：要量的是守門的**成本**，不是守門**拒絕流量**的行為。用正式速率跑的話量到的會是一整片 429
+- **前後對照一定要有不受改動影響的對照端點。** `/api/health`、`/api/patients`、`/api/summary` 不受守門保護，所以它們的前後差值理論上必須是 0——這是刻意留的控制組。第一次跑對照時它立刻付出了代價：我在量測期間順手跑了 mypy／pytest／eval smoke，結果 `health`（跑在最前面）的 RPS 從 1632 掉到 902。**如果沒有這個控制組，我會把自己造成的雜訊寫成「認證讓 p50 增加 24 ms」——一個看起來合理、實際上錯誤的結論。** 那次量測整份作廢重跑，重跑時全程不做任何耗 CPU 的事，控制組的差值才收斂到 ±1.6 ms 以內
+
+**下一步**
+
+- Phase 2（可觀測性）：request ID、結構化 JSON 日誌 + PII 遮蔽、OpenTelemetry、`/metrics`。**必須有消費端**（dev-only Jaeger profile + commit 進 repo 的 trace 樣本），且 PII 遮蔽必須有 grep 斷言測試
+- Phase 3（韌性）時一併補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計、不涵蓋單次 provider 呼叫的缺口
+- **尚未處理的既有落差**（這次探索到但刻意不擴大範圍，記在這裡免得下次又要重新發現）：
+  `guardrails.max_output_tokens` 被載入成設定欄位但程式中無任何使用處；
+  `ProviderConfig.backup_api_key_envs` 在 `models.yaml` 定義了 3 把備援金鑰但沒有任何程式讀它（429 failover 未實作）；
+  前端零測試、CI 也沒有任何前端步驟（`app/` 的 lint/build 只在本機與 Dockerfile 內跑過）
+
+---
+
 ## 2026-07-24（續之四）— M7 完成（打包與發布準備；docker build 現場驗證受阻，已用等效方式驗證並誠實記錄）
 
 **做了什麼**

@@ -66,7 +66,7 @@ flowchart LR
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界；eval 內建 injection 題型驗證（見下方 eval 結果） |
 | **病患範圍由伺服器端注入，LLM 無法竄改** | `patient_id` 從 LLM 看得到的工具 schema 中移除（[`tools/registry.py:llm_facing_schema`](src/fhir_copilot/tools/registry.py)），由 agent loop 依對話 session 直接注入工具呼叫（見 [ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
 | **Secret 只從環境變數來** | `.env`、`data/raw`、`data/processed` 永不進 git（`.gitignore`） |
-| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式） |
+| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；單次 provider 呼叫本身目前沒有逾時保護 |
 
 完整 threat model 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)。
 
@@ -103,6 +103,67 @@ flowchart LR
 **Citation validity 100%（兩個模型皆是）是最重要的信任指標**：每筆 evidence 都直接對照真實 FHIR store 驗證過，不是模型自我宣稱。
 
 跑完整 220 題全量比較：`uv run python scripts/run_eval.py --provider gemini --full-eval --pace-seconds 10`（Gemini 免費層 15 req/min，需要 pacing，約需 37 分鐘）。mock provider 220 題全量已跑通（tool-selection 85.0%、citation validity 100.0%，見 [docs/PROGRESS.md](docs/PROGRESS.md)）。
+
+## 營運控制
+
+這個服務處理病患資料、而且每次問答都花真錢，所以有一層營運控制。
+**每個控制項都從一個具體事實推導出來，講不出領域理由的就不做**
+（見 [ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)）。
+
+| 事實 | 控制 | 實際證據 |
+|---|---|---|
+| `/api/chat` 每次呼叫都花真錢，端點原本完全開放 | API key 認證（header `X-API-Key`，金鑰只從環境變數來） | 無 key 得 401、錯 key 得 401，測試在 [`tests/test_auth.py`](tests/test_auth.py) |
+| 一個呼叫者不該把服務吃光 | 每 key token bucket 限流 | 超過設定速率得 429 + `Retry-After`，測試在 [`tests/test_rate_limit.py`](tests/test_rate_limit.py) |
+| 會被燒光的是同一個 API 帳號的額度 | 全域每日成本上限（沿用 `estimate_cost_usd`，缺單價照樣 raise） | 超過上限得 429 + `error_code: budget_exceeded`（不是 500），測試在 [`tests/test_budget.py`](tests/test_budget.py) |
+
+速率、上限等參數全部在 [`configs/ops.yaml`](configs/ops.yaml)，不寫死在程式。
+`/api/health`、`/api/patients*`、`/api/providers` 不受保護——唯讀端點不花錢也不寫入，
+沒有理由擋；健康檢查被認證擋住的話，它就不再是健康檢查了。
+
+### 這些控制的代價（實測，不是估計）
+
+加控制項之前先量了基線，加完之後用同一組參數重跑一次
+（[baseline](reports/loadtest/baseline-20260725.md) vs
+[with-controls](reports/loadtest/with-controls-20260725.md)）：
+
+- **每個請求約 +1 ms**（`/api/chat` c1，p50 從 603.0 ms 到 604.1 ms，約 **0.18%**）
+- 不受守門保護的三個端點是**內建的控制組**，它們的前後差值在 ±1.6 ms 以內，
+  所以上面那 1 ms 是控制項的成本，不是量測當天的雜訊
+- c64 時 `/api/chat` 的 p50 增加 85.6 ms，但**那一格已經 threadpool 飽和**
+  （見下），延遲由排隊主導、吞吐只掉 0.5%，所以那個數字不該解讀成單次請求的成本
+
+**這組數字是服務層 overhead**（FastAPI + 工具執行 + FHIR store），用 mock provider
+加固定 300 ms 延遲模擬，**不含真實 LLM 供應商的延遲**。
+
+### 已知的架構瓶頸（量出來的）
+
+7 個端點全部是同步 `def`，FastAPI 會丟進 anyio threadpool（預設 40 threads），
+而 provider 呼叫是阻塞的。所以 `/api/chat` 的吞吐上限是
+`40 threads ÷ 0.6 s = 66.7 rps`——基線在 c64 實測 **64.6 rps**，p50 從 c32 的 609 ms
+跳到 952 ms。這不是「效能不好」，是可解釋、可預測的架構特性；
+要提高得改 async provider 或加 worker，兩者都還沒做。
+
+### 降級行為
+
+沿用「provider 缺金鑰自動退回 mock」的哲學：**不會因為少一個環境變數就起不來**，
+但 `/api/health` 會誠實回報現在少了什麼保護。
+
+| 情況 | 行為 |
+|---|---|
+| 沒設 provider 金鑰 | 自動退回 mock，`/api/health` 回 `demo_mode: true` |
+| 沒設 `FHIR_COPILOT_API_KEYS` | 認證層等於關閉，一律當 `anonymous` 放行；`api_key_count: 0` |
+| 設了金鑰但請求帶錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
+| `FHIR_COPILOT_REQUIRE_AUTH=true` 但沒有任何金鑰 | **Fail closed**（全部擋下）。這是設定矛盾，fail open 等於「以為有保護，其實沒有」 |
+
+**限流與預算即使在 demo mode 也生效**——沒開認證不代表不會花錢。
+
+### 已知限制（營運層）
+
+- 限流與預算計數都在**單一 process 的記憶體**裡。多實例部署時每個實例各有一份計數，
+  限流會變成 N 倍；服務重啟時預算計數歸零。`/api/health` 回報 `budget_counting_since`，
+  讓看的人知道這個數字是從什麼時候起算的
+- 前端的 API key 存在 `localStorage`，由使用者自己貼入。這不比 build-time env「更安全」，
+  但它誠實：金鑰是這個瀏覽器的使用者提供的，不是我們烤進公開 JS bundle 發佈出去的
 
 ## 成本
 
@@ -202,7 +263,7 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 ## 安全邊界文件
 
 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)：synthetic-only、read-only default、
-prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）。
+prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）、[ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（營運層控制項從領域推導）。
 
 ## 授權
 
