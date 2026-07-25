@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from fhir_copilot.api import dependencies
 from fhir_copilot.api.app import create_app
-from tests.conftest import AMY_ID, FIXTURES_DIR
+from tests.conftest import AMY_ID, FIXTURES_DIR, clear_ops_env
 
 
 @pytest.fixture
@@ -16,6 +16,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("FHIR_COPILOT_DATA_DIR", str(FIXTURES_DIR))
     monkeypatch.setenv("FHIR_COPILOT_PROVIDER", "mock")
     monkeypatch.setenv("FHIR_COPILOT_AUDIT_LOG_PATH", str(tmp_path / "care_notes.jsonl"))
+    # 這些測試測的是路由本身,不是營運層守門——確保跑在「沒開認證」的預設狀態
+    clear_ops_env(monkeypatch)
     dependencies.reset_caches()
     with TestClient(create_app()) as test_client:
         yield test_client

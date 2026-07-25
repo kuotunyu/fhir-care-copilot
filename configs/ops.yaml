@@ -1,0 +1,52 @@
+# 營運層參數(認證、限流、預算、負載測試)。與 guardrails.yaml 一樣的原則:
+# 數值不寫死在程式,改這裡即可。
+#
+# guardrails.yaml 管的是「單次對話在 agent loop 內的行為」;
+# 這一份管的是「服務對外的營運行為」——兩者刻意分開,不要互相覆蓋。
+
+auth:
+  # 帶 API key 的 header 名稱。金鑰本身只從環境變數來(FHIR_COPILOT_API_KEYS),
+  # 永遠不進設定檔、不進 git。
+  header_name: X-API-Key
+  #
+  # 「哪些端點要保護」的權威來源是程式(api/routes.py 上掛了哪個 dependency),
+  # 這裡刻意不重複列路徑——理由與 guardrails.yaml 不重複列工具 allowlist 相同:
+  # 設定檔與程式碼各說各話時,沒有人知道哪一份才算數。
+
+rate_limit:
+  # 每個 key 各自一個 token bucket。限流是「公平性」控制:一個呼叫者不該
+  # 把服務吃光。它與下面的預算上限是兩件事,不要混為一談。
+  requests_per_minute: 20
+  burst: 10 # 允許的瞬間突發量(bucket 容量)
+
+budget:
+  # 每日成本上限是「帳號保護」控制,所以是**整個 process 全域累計**,不是每個 key
+  # 各算各的——會被燒光的是同一個 API 帳號的額度,不是某一把 key 的額度。
+  daily_limit_usd: 1.0
+  #
+  # 前置估算用的假設 token 數。沿用 eval/runner.py 已經在用的同一套語彙
+  # (跑前估算 → 超過中止 → 執行中累計實際花費)。實際成本仍以回應的
+  # estimated_cost_usd 為準,這兩個數字只用來擋「這一發打下去會超過」。
+  estimated_input_tokens_per_request: 2000
+  estimated_output_tokens_per_request: 300
+
+load_test:
+  # 負載測試專用(Phase 0 基線 / Phase 5 對照)。兩次測量必須用同一組參數,
+  # 否則數字不可比。
+
+  # mock provider 每次「provider 呼叫」的固定延遲。agent loop 一輪問答會呼叫
+  # 兩次,所以 /api/chat 的端到端延遲下限約為這個值的兩倍。
+  # 300ms 取自 M6 對 gemini-3.1-flash-lite 的實測量級,目的是讓 /api/chat 的
+  # 併發行為接近正式環境——不設延遲的話那條路徑快得不真實。
+  mock_latency_ms: 300
+
+  concurrency_ladder: [1, 2, 4, 8, 16, 32, 64]
+  duration_seconds: 20 # 每個 (端點, 併發) 組合的量測時間
+  repeats: 3 # 同一組合重跑幾次,取各百分位數的中位數
+  warmup_requests: 20 # 進入階梯前先打幾次,把 store 索引的冷啟動成本付掉
+
+  targets: [health, patients, summary, chat]
+
+  # 後端在哪裡跑(runner 會自己起一個 uvicorn)
+  host: 127.0.0.1
+  port: 8931 # 刻意避開 8000/7860,不跟開發中的服務或容器搶

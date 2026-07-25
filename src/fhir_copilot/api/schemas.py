@@ -16,6 +16,9 @@ from fhir_copilot.tools import (
 
 
 class HealthResponse(BaseModel):
+    """健康檢查。除了活著沒活著,也回報所有降級狀態——demo mode 是刻意的設計,
+    不是要藏起來的缺陷,所以看的人要能一眼知道現在少了什麼保護。"""
+
     model_config = ConfigDict(strict=True)
 
     status: str
@@ -23,6 +26,13 @@ class HealthResponse(BaseModel):
     model_id: str
     demo_mode: bool
     patient_count: int
+    # ---- 營運層狀態(Phase 1)----
+    auth_required: bool
+    api_key_count: int  # 只回數量,永遠不回金鑰本身
+    rate_limit_per_minute: int
+    budget_limit_usd: float
+    budget_spent_usd_today: float
+    budget_counting_since: str  # 記憶體計數,重啟歸零——起算時間攤開講
 
 
 class PatientListResponse(BaseModel):
