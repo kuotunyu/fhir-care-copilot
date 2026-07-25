@@ -6,7 +6,7 @@
 
 ---
 
-## 2026-07-24（續之四）— M7 完成 ✅（打包與發布準備；docker build 現場驗證受阻，已用等效方式驗證並誠實記錄）
+## 2026-07-24（續之四）— M7 完成（打包與發布準備；docker build 現場驗證受阻，已用等效方式驗證並誠實記錄）
 
 **做了什麼**
 - `LICENSE`（Apache-2.0 全文）、`CITATION.cff`（機器可讀引用，preferred-citation 指向 Synthea JAMIA 論文）
@@ -55,7 +55,7 @@ uv run python scripts/publish_to_hf.py --repo-id kuotunyu/fhir-care-copilot --se
 
 ---
 
-## 2026-07-24（續之三）— M6 完成 ✅（真實對 Gemini 與 OpenAI 各跑 30 題，發現並修正判準 bug）
+## 2026-07-24（續之三）— M6 完成（真實對 Gemini 與 OpenAI 各跑 30 題，發現並修正判準 bug）
 
 **做了什麼**
 - `scripts/generate_model_comparison.py`:從 `run_eval.py` 產出的 JSON 自動組出 `reports/model_comparison.md`(直接讀真實數字,不手 key),含逐字稿附錄
@@ -97,7 +97,7 @@ avg / total cost (USD):  $0.00145 / $0.0436
 
 ---
 
-## 2026-07-24（續之二）— M5 完成 ✅（Eval harness，220 題對真實資料跑通）
+## 2026-07-24（續之二）— M5 完成（Eval harness，220 題對真實資料跑通）
 
 **做了什麼**
 - `src/fhir_copilot/eval/`:`cases.py`(自動產生 case,標準答案直接來自真實工具回傳值,不人工標註)、`metrics.py`(6 項指標判準)、`runner.py`(執行 + 兩層預算守門)
@@ -143,7 +143,7 @@ avg / total cost (USD):  $0.00000 / $0.0000
 
 ---
 
-## 2026-07-24（續）— M4 完成 ✅（FastAPI + React 工作台，瀏覽器實測通過）
+## 2026-07-24（續）— M4 完成（FastAPI + React 工作台，瀏覽器實測通過）
 
 **做了什麼**
 - 先驗證 PLAN.md §10 風險表懸而未決的一項：node v24.16.0 + `npm create vite` + `npm install` + `npm run build` 在這個含中文與空格的路徑上全部正常，無需比照 Python 改路徑或搬 WSL2
@@ -188,15 +188,15 @@ GET /                   → 200,回傳 app/dist/index.html(FastAPI 直接 serve 
 
 ---
 
-## 2026-07-24 — M1 收尾 + M2 + M3 完成 ✅（含真實 Gemini/OpenAI 端到端測試）
+## 2026-07-24 — M1 收尾 + M2 + M3 完成（含真實 Gemini/OpenAI 端到端測試）
 
 **背景**：使用者授權整晚自主開工（只交代不 push、GitHub Contributors 保持乾淨）。session 中途從 Fable 5 切到 Sonnet 5（額度問題），不影響進度。M1/M2 分別跑了 21-agent 與 16-agent 多視角審查（含直接對真實下載的 100 位病患資料寫探針驗證），M3 做了 agent loop + 三個 provider + 兩次真實 API 端到端測試。
 
 **做了什麼**
 
 *M1 收尾（store 層 21-agent 審查修正）*
-- 🔴 **HIGH**：`_build_index` 原本只接 `(OSError, json.JSONDecodeError)`，非 UTF-8 的壞檔會丟出 `UnicodeDecodeError`（`ValueError` 子類別、不在原本的 except 裡），讓整個 store 初始化直接炸掉，而不是照設計跳過該檔 → 改成 `except (OSError, ValueError)`，補迴歸測試
-- ⚠️ **PLAN.md §7 的「查證事實」被真實資料推翻**：原始 spec 依二手文件寫「transaction 模式下 Practitioner/Organization/Location 不在病患 bundle 內、用 conditional search URL 參照」——3 個獨立審查視角交叉掃描全部 1,280 個真實 patient bundle、190 萬筆 reference 欄位，**0 筆是 conditional search URL**：Practitioner/Organization 其實都內嵌在 bundle 內、用 `urn:uuid` 正常解析，只有 Location 真的沒出現。真正無法解析的參照是 `#` 開頭的 contained resource 參照（只在 `ExplanationOfBenefit`，1K 樣本裡 93,736 筆，之前完全沒被記錄）→ 修正 PLAN.md §7、`store/local.py`、`store/base.py` 的文件；fixture 改成用真實資料的 urn:uuid 模式，conditional-search-URL 與 `#` 參照都保留為防禦性測試案例
+- **[HIGH]**：`_build_index` 原本只接 `(OSError, json.JSONDecodeError)`，非 UTF-8 的壞檔會丟出 `UnicodeDecodeError`（`ValueError` 子類別、不在原本的 except 裡），讓整個 store 初始化直接炸掉，而不是照設計跳過該檔 → 改成 `except (OSError, ValueError)`，補迴歸測試
+- **PLAN.md §7 的「查證事實」被真實資料推翻**：原始 spec 依二手文件寫「transaction 模式下 Practitioner/Organization/Location 不在病患 bundle 內、用 conditional search URL 參照」——3 個獨立審查視角交叉掃描全部 1,280 個真實 patient bundle、190 萬筆 reference 欄位，**0 筆是 conditional search URL**：Practitioner/Organization 其實都內嵌在 bundle 內、用 `urn:uuid` 正常解析，只有 Location 真的沒出現。真正無法解析的參照是 `#` 開頭的 contained resource 參照（只在 `ExplanationOfBenefit`，1K 樣本裡 93,736 筆，之前完全沒被記錄）→ 修正 PLAN.md §7、`store/local.py`、`store/base.py` 的文件；fixture 改成用真實資料的 urn:uuid 模式，conditional-search-URL 與 `#` 參照都保留為防禦性測試案例
 - 下載腳本 4 個穩健性 bug（都是真實會發生的情境，非假設）：`download()` 中斷後留下看似完整的半成品檔案 → 改成下載到 `.part` 暫存檔、成功才原子性 rename；`extract()` 只看「有沒有任一檔案」判斷已完成 → 改成比對 zip 內實際 `.json` 數；`make_subset()` 只比數量、不比檔名 → 換來源（下載↔生成）但數量剛好一樣時會誤判成最新 → 改成比對實際檔名集合；`java_major_version()` 誤判 Java 8 舊制版號 `"1.8.0_281"` 為主版號 1（不影響拒絕判斷，但診斷訊息誤導）→ 修正
 - 新增 `tests/test_download_script.py`（12 個測試，純邏輯、不碰真實網路）
 
@@ -240,7 +240,7 @@ estimated_cost_usd: 0.0014325
 ```
 
 **決策 / 發現**
-- 🔥 **模型現況會漂移，即使查證日期只差 5 天**：7/19 查證 `gemini-2.5-flash-lite` 是 GA 現行模型；7/24 實測發現這把金鑰打它回 404「對新使用者已下架」（`client.models.list()` 卻仍列得出來——列表≠可呼叫）。改用 `gemini-3.1-flash-lite`（已實測成功），定價從 $0.10/$0.40 變成 $0.25/$1.50 per 1M tokens（仍便宜，200 題 eval 預算影響可忽略）。教訓：**model_id 一定要走 config 才扛得住這種漂移**——這也是這次順手修掉「model_id 寫死在 provider class」架構漏洞的直接動機
+- **模型現況會漂移，即使查證日期只差 5 天**：7/19 查證 `gemini-2.5-flash-lite` 是 GA 現行模型；7/24 實測發現這把金鑰打它回 404「對新使用者已下架」（`client.models.list()` 卻仍列得出來——列表≠可呼叫）。改用 `gemini-3.1-flash-lite`（已實測成功），定價從 $0.10/$0.40 變成 $0.25/$1.50 per 1M tokens（仍便宜，200 題 eval 預算影響可忽略）。教訓：**model_id 一定要走 config 才扛得住這種漂移**——這也是這次順手修掉「model_id 寫死在 provider class」架構漏洞的直接動機
 - Workflow 背景審查偶爾會卡住不動（M1 第一次跑 21 個 agent 卡在 1/5 完成十幾分鐘無進度，疑似跟同時跑 M2 審查搶併發額度有關）→ 直接 `TaskStop` 重跑一次就正常跑完，沒有更深入排查，記錄下來供之後參考
 - `propose_care_note` 的設計關鍵：**不放進唯讀 agent loop 的工具清單**，是獨立於問答對話的動作路徑，避免被使用者的一般提問意外觸發草稿生成——這個邊界用測試鎖住了
 
@@ -251,7 +251,7 @@ estimated_cost_usd: 0.0014325
 
 ---
 
-## 2026-07-19 — M0 工程骨架完成 ✅
+## 2026-07-19 — M0 工程骨架完成
 
 **做了什麼**
 - 本機 `git init -b main`（無 remote）；uv + pyproject（**Python 3.13**，非原定 3.11，見下）；目錄與 22 個骨架檔案
@@ -272,7 +272,7 @@ uv run python -V     → Python 3.13.13
 ```
 
 **決策 / 發現**
-- 🔥 **中文路徑地雷（已解）**：Python 3.11/3.12 的 `site` 讀 `.pth` 固定用 cp950（`PYTHONUTF8=1` 實測無效），editable install 的 UTF-8 路徑直接讓 venv 啟動即炸 → **改用 Python 3.13**（`.pth` 改 UTF-8 解碼），全部恢復正常。詳見 ADR 0002
+- **中文路徑地雷（已解）**：Python 3.11/3.12 的 `site` 讀 `.pth` 固定用 cp950（`PYTHONUTF8=1` 實測無效），editable install 的 UTF-8 路徑直接讓 venv 啟動即炸 → **改用 Python 3.13**（`.pth` 改 UTF-8 解碼），全部恢復正常。詳見 ADR 0002
 - pre-commit 用系統 locale 讀自己的設定檔 → `.pre-commit-config.yaml` 必須 **ASCII-only**（中文註解會炸，實測）
 - cp950 第三例：`pre-commit install` 的 hook 以 Big5 嵌 venv 路徑 → 改用 repo 內建 hook（`core.hooksPath scripts/git-hooks`、`uv run` 不嵌路徑），commit 時 9 個 hooks 實測通過
 - 審查修正：`.gitignore` 的 `data/` 錨定為 `/data/`（否則 M1 的 `tests/data/` fixture 會被默默忽略）；CI 改 `uv sync --locked`；setup-uv 釘 `v8.3.2`（**v8 起廢除 major tag，`@v8` 不存在**）；README 殘留 3.11 字樣清除

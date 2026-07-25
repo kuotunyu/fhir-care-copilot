@@ -36,7 +36,7 @@
 - [x] **M3 — Agent loop + providers**（2026-07-24 完成）
   回應契約（見 §5）；mock provider（deterministic、CI 不需金鑰）；agent loop 護欄：max tool rounds、timeout、輸入長度上限、工具 allowlist（write 類工具不存在於 loop）；Gemini adapter（`google-genai`、手動 function calling、`automatic_function_calling.disable=True`；model id 走 config，見下方「模型現況變化」）；OpenAI adapter（Responses API；模型 id 走 config 不寫死）；`propose_care_note` 草稿 + `confirm_and_log` 確認後寫本地 audit log JSONL（**刻意不進入**唯讀 agent loop 的工具清單，見 ADR 0001）；token 用量與成本計算（單價放 `configs/pricing.yaml`，不寫死在程式）；病患範圍由 loop 直接注入工具呼叫、LLM 無法透過參數竄改（見 ADR 0003）。
   **驗收**：mock provider 全流程測試綠（80 個測試）；Gemini 與 OpenAI 皆真跑並回報真實輸出（見下方「模型現況變化」與 PROGRESS.md）。
-  ⚠️ **模型現況變化**（2026-07-24 實測發現）：`gemini-2.5-flash-lite`（§7 查證時的預設模型）對這把金鑰的帳號回傳 404「對新使用者已下架」，即使 `client.models.list()` 仍列得出來。改用同世代目前可用的 `gemini-3.1-flash-lite`（已用同一把金鑰實測成功），定價 $0.25 input / $1.50 output per 1M tokens（原模型 $0.10/$0.40 仍保留在 pricing.yaml 供之後換帳號時使用）。教訓：模型可用性會因 API 金鑰/帳號的新舊而異，不是只看官方文件列不列出來就準。
+  **模型現況變化**（2026-07-24 實測發現）：`gemini-2.5-flash-lite`（§7 查證時的預設模型）對這把金鑰的帳號回傳 404「對新使用者已下架」，即使 `client.models.list()` 仍列得出來。改用同世代目前可用的 `gemini-3.1-flash-lite`（已用同一把金鑰實測成功），定價 $0.25 input / $1.50 output per 1M tokens（原模型 $0.10/$0.40 仍保留在 pricing.yaml 供之後換帳號時使用）。教訓：模型可用性會因 API 金鑰/帳號的新舊而異，不是只看官方文件列不列出來就準。
 - [x] **M4 — API + 前端工作台**（2026-07-24 完成）
   FastAPI endpoints：病患清單、summary(timeline)、chat、care-note propose/confirm、health、providers。React + Vite 工作台：病患選擇器（搜尋）、時間軸（診斷/用藥/觀察值/照護計畫分頁）、對話區、證據抽屜、cost/latency badge、拒答狀態；**正體中文 UI（專有名詞保留原文）**、鍵盤可操作（`:focus-visible`、原生 `<details>`/表單語意）、手機可瀏覽（已實測 375px 寬無橫向溢位）；`vite build` 靜態檔由 FastAPI serve（同一 process、同一 port）。設計語彙:「溫暖病歷夾」(奶油紙色 + 深松石綠 + 赤陶橘,紅色保留給拒答/錯誤)。
   **驗收**：`just run` 一行指令啟動；90 秒 demo 路徑已用瀏覽器對真實 100 位病患資料實測走通（選病患→看時間軸→問問題→看證據抽屜與 cost badge→切換病患）；FastAPI 直接 serve production build 與 vite dev proxy 兩種模式都驗證過；89 個後端測試 + oxlint 皆綠。
@@ -52,7 +52,7 @@
   **驗收現況**：
   - `uv run pytest`（128 通過）、`ruff check .`、`mypy .` 全綠
   - `publish_to_hf.py` dry-run 實測通過（不需金鑰、不呼叫任何 HF API）
-  - ⚠️ **`docker build`/`docker compose up` 本機現場驗證受阻**：本機 Docker Desktop 4.80.0 的 backend 在啟動時因為 AppData 底下多個 AF_UNIX socket 檔案（`Docker\run\dockerInference`、`docker-secrets-engine\engine.sock`）反覆變成無法存取（Windows error 1920）而 crash-loop——查證發現這是這台機器上**已存在多天的環境問題**（`%LOCALAPPDATA%` 下留有 7/17～7/18 的同類殘留資料夾），不是本專案程式碼造成的。嘗試清掉殘留 socket 檔案後仍在下一次啟動重新卡住，判斷可能與即時防毒掃描鎖定新建立的 socket reparse point 有關；由於修改防毒/系統設定超出本次自主執行的授權範圍，未進一步處理，留給使用者之後排查(可能需要 Docker Desktop 重灌或短暫停用即時防護測試)。
+  - **`docker build`/`docker compose up` 本機現場驗證受阻**：本機 Docker Desktop 4.80.0 的 backend 在啟動時因為 AppData 底下多個 AF_UNIX socket 檔案（`Docker\run\dockerInference`、`docker-secrets-engine\engine.sock`）反覆變成無法存取（Windows error 1920）而 crash-loop——查證發現這是這台機器上**已存在多天的環境問題**（`%LOCALAPPDATA%` 下留有 7/17～7/18 的同類殘留資料夾），不是本專案程式碼造成的。嘗試清掉殘留 socket 檔案後仍在下一次啟動重新卡住，判斷可能與即時防毒掃描鎖定新建立的 socket reparse point 有關；由於修改防毒/系統設定超出本次自主執行的授權範圍，未進一步處理，留給使用者之後排查(可能需要 Docker Desktop 重灌或短暫停用即時防護測試)。
   - **等效驗證**（因為 Docker daemon 起不來，改用能力範圍內最貼近的方式驗證 Dockerfile 的邏輯正確性）：
     1. 靜態複查時發現一個真實 bug——原本的 layer 順序是先 `COPY pyproject.toml uv.lock` 再 `RUN uv sync`，但 `pyproject.toml` 的 `[project]` 有 `readme = "README.md"` 且 hatchling 需要 `src/fhir_copilot/` 才能把本專案自己 build 成套件；用臨時目錄重現(只放 pyproject.toml + uv.lock，不放 README.md/src/)後 `uv sync --locked --no-dev` **真的失敗**(`OSError: Readme file does not exist: README.md`)。已修正 Dockerfile：`README.md` 與 `src/` 提前到 `uv sync` 之前一起複製，修正後重現通過。
     2. 用臨時目錄完整重現 Dockerfile 的檔案佈局(`pyproject.toml`/`uv.lock`/`README.md`/`src/`/`configs/`)、`uv sync --locked --no-dev` 成功、以 `FHIR_COPILOT_PROVIDER=mock`(等同容器內無金鑰自動退回 mock 的路徑)+ `FHIR_COPILOT_DATA_DIR` 指向 committed fixtures 啟動 `uvicorn`，實測 `/api/health`(回傳 `demo_mode:true`)、`/api/patients`、`/api/chat`(真實跑完 agent loop、回傳含 evidence 的正確答案)皆正常
@@ -125,7 +125,7 @@ data/raw、data/processed   # gitignored
 ### Synthea
 - 官方 repo：https://github.com/synthetichealth/synthea ，授權 **Apache-2.0**（GitHub API 確認）
 - 引用：Walonoski J, et al. *Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record.* JAMIA. 2018;25(3):230-238. https://doi.org/10.1093/jamia/ocx079
-- ⚠️ **修正原始 spec**：官方沒有可確認的 100 位病患 R4 樣本包。已驗證可下載（HTTP 200、85,042,887 bytes）的是 ~1,000 位病患：
+- **修正原始 spec**：官方沒有可確認的 100 位病患 R4 樣本包。已驗證可下載（HTTP 200、85,042,887 bytes）的是 ~1,000 位病患：
   `https://synthetichealth.github.io/synthea-sample-data/downloads/synthea_sample_data_fhir_r4_sep2019.zip`
   → 下載腳本抓 1K 樣本 + `--subset N`（預設 100）
 - 本地生成：Java JDK 17+；`java -jar synthea-with-dependencies.jar -s <seed> -p 500 [state]`；相同 seed + 相同版本輸出一致；FHIR R4 為預設輸出（transaction bundle、`./output/fhir`）；會同時輸出 `hospitalInformation*.json`、`practitionerInformation*.json`
@@ -138,10 +138,10 @@ data/raw、data/processed   # gitignored
 - `Observation`：`status="final"`、LOINC、`effectiveDateTime`、`valueQuantity`（UCUM）；也可能 `valueCodeableConcept`、多 component（如血壓），或 **`valueString`**（social-history 類別常見，如居住/受虐狀況——對長照個案特別重要，M2 審查發現漏接會讓工具靜默回傳 `None`，跟「真的沒資料」無法區分）；真實 100 位病患樣本（19,550 筆）驗證只出現這 4 種 value[x] 形式
 - `CarePlan`：`status` = `active`/`completed`；`period.start` 必有；活動在 `activity[].detail`；`addresses[]` 參照 Condition
 - Bundle 內互相參照用 `urn:uuid:` fullUrl
-- ⚠️ **修正**（M1 審查用真實下載的 1K 樣本重新查證，原始 spec 依二手文件寫的說法是錯的）：實測掃描全部 1,280 個 patient bundle、190 萬筆 reference 欄位，**0 筆是 conditional search URL**——Practitioner、Organization 都內嵌在病患 bundle 內、用 `urn:uuid` 就能正常解析（只有 Location 真的完全沒出現）。store 對含 `?` 的參照回傳 None 是**防禦性保留**（給其他版本/設定的 Synthea 輸出用），不是這份資料實際會走到的路徑。真正無法解析的參照是 **`#` 開頭的 contained resource 參照**（只出現在 `ExplanationOfBenefit`，如 `referral: "#referral"`，指向自己的 `contained[]`），1K 樣本裡有 93,736 筆——目前沒有工具讀 ExplanationOfBenefit，一律回傳 None
+- **修正**（M1 審查用真實下載的 1K 樣本重新查證，原始 spec 依二手文件寫的說法是錯的）：實測掃描全部 1,280 個 patient bundle、190 萬筆 reference 欄位，**0 筆是 conditional search URL**——Practitioner、Organization 都內嵌在病患 bundle 內、用 `urn:uuid` 就能正常解析（只有 Location 真的完全沒出現）。store 對含 `?` 的參照回傳 None 是**防禦性保留**（給其他版本/設定的 Synthea 輸出用），不是這份資料實際會走到的路徑。真正無法解析的參照是 **`#` 開頭的 contained resource 參照**（只出現在 `ExplanationOfBenefit`，如 `referral: "#referral"`，指向自己的 `contained[]`），1K 樣本裡有 93,736 筆——目前沒有工具讀 ExplanationOfBenefit，一律回傳 None
 - `hospitalInformation*.json` / `practitionerInformation*.json` 是 `batch` type bundle → 載入時跳過
-- ⚠️ **時間排序陷阱**：同一病患跨年份的 `effectiveDateTime`/`period.start` 會混用 `-04:00`/`-05:00` 位移（日光節約時間），**直接比字串排序會與實際時間相反**（M2 審查用真實資料證實）；一律要 parse 成 `datetime` 再比較，不能比字串
-- ⚠️ **資料瑕疵**：真實樣本中 Left ventricular Ejection fraction 的 `category` code 誤植為單數 `vital-sign`（標準應為複數 `vital-signs`），19,550 筆中僅 5 筆；以 `category="vital-signs"` 篩選查不到——上游資料的極少數不一致，暫不處理，只記錄
+- **時間排序陷阱**：同一病患跨年份的 `effectiveDateTime`/`period.start` 會混用 `-04:00`/`-05:00` 位移（日光節約時間），**直接比字串排序會與實際時間相反**（M2 審查用真實資料證實）；一律要 parse 成 `datetime` 再比較，不能比字串
+- **資料瑕疵**：真實樣本中 Left ventricular Ejection fraction 的 `category` code 誤植為單數 `vital-sign`（標準應為複數 `vital-signs`），19,550 筆中僅 5 筆；以 `category="vital-signs"` 篩選查不到——上游資料的極少數不一致，暫不處理，只記錄
 
 ### Gemini（google-genai SDK）
 - 現行 SDK：`google-genai`（`from google import genai`）；舊 `google-generativeai` 已於 2025-11-30 棄用
@@ -151,7 +151,7 @@ data/raw、data/processed   # gitignored
 - 注意：官方 docs 現在主推新 Interactions API surface；本專案**刻意選用** `client.models.generate_content`（穩定、文件齊全）→ 記入 ADR
 
 ### OpenAI
-- ✅ `gpt-5.4-mini` 存在（snapshot `gpt-5.4-mini-2026-03-17`、400K context）；$0.75 input / $0.075 cached / $4.50 output per 1M tokens；tool calling 與 structured outputs 皆支援
+- [已確認] `gpt-5.4-mini` 存在（snapshot `gpt-5.4-mini-2026-03-17`、400K context）；$0.75 input / $0.075 cached / $4.50 output per 1M tokens；tool calling 與 structured outputs 皆支援
 - 新專案官方建議 **Responses API**；tool 定義扁平 `{"type":"function","name":…,"parameters":{…}}`；tool call 在 `response.output`（`type:"function_call"`，`arguments` 是 JSON 字串）；結果回傳 `{"type":"function_call_output","call_id":…,"output":…}`；用量 `response.usage.input_tokens` / `.output_tokens`；Key：`OPENAI_API_KEY`
 
 ### Hugging Face Docker Space
