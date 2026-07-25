@@ -30,7 +30,11 @@ ENV HOME=/home/user \
 # build 失敗:「Readme file does not exist」)。
 COPY --chown=user pyproject.toml uv.lock README.md ./
 COPY --chown=user src/ ./src/
-RUN uv sync --locked --no-dev
+# --extra postgres:裝 psycopg,讓這個 image 在有 DATABASE_URL 時能用資料庫模式的
+# 稽核軌跡。**這裡裝的是 client 驅動,不是 postgres 伺服器**——資料庫是獨立容器
+# (docker-compose 的 db profile),不進 image。
+# 沒有 DATABASE_URL 時服務照樣跑,稽核軌跡退回 JSONL,這個 extra 只是閒置。
+RUN uv sync --locked --no-dev --extra postgres
 
 COPY --chown=user configs/ ./configs/
 COPY --chown=user scripts/ ./scripts/

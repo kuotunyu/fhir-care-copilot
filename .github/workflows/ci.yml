@@ -50,6 +50,49 @@ jobs:
         # 也刻意寫成單行,不用反斜線續行(那是 bash 語法,pwsh 會解析失敗)。
         run: uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --out "${{ runner.temp }}/ci-eval-smoke.json"
 
+  postgres:
+    # 稽核軌跡的 Postgres 後端(營運層 Phase 4)。
+    #
+    # 為什麼是獨立的 job 而不是加進 check matrix:service container 只在 Linux
+    # runner 上可用,而且沒有 DATABASE_URL 的環境本來就跑檔案模式——那條路徑由
+    # check job 的一般測試涵蓋。分開跑,兩種模式都有人守著。
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: copilot
+          POSTGRES_PASSWORD: copilot
+          POSTGRES_DB: copilot
+        ports:
+          - 5432:5432
+        # 沒有 health check 的話,測試會在資料庫還沒接受連線時就開始跑
+        options: >-
+          --health-cmd "pg_isready -U copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (含 postgres extra)
+        run: uv sync --locked --extra postgres
+
+      - name: Test (Postgres 稽核後端)
+        env:
+          DATABASE_URL: postgresql://copilot:copilot@localhost:5432/copilot
+        run: uv run pytest tests/test_audit_postgres.py -v
+
+      - name: 稽核鏈驗證程式能跑
+        env:
+          DATABASE_URL: postgresql://copilot:copilot@localhost:5432/copilot
+        run: uv run python scripts/verify_audit_chain.py
+
   docker:
     # image 建置只在 Linux 驗證(base image 都是 linux)。這個 job 要抓的是
     # .dockerignore 與 COPY / layer 順序這類與開發機無關的錯誤——正是先前

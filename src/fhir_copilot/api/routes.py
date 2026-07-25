@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from fhir_copilot.agent import AgentResponse, answer_question
 from fhir_copilot.api.dependencies import (
-    audit_log_path,
+    get_audit_sink,
     get_budget,
     get_guardrails,
     get_metrics,
@@ -31,13 +31,16 @@ from fhir_copilot.api.schemas import (
 )
 from fhir_copilot.care_notes import (
     ConfirmedCareNote,
+    DraftSignatureError,
     ProposeCareNoteInput,
     ProposeCareNoteResult,
     confirm_and_log,
     propose_care_note,
 )
 from fhir_copilot.config import Guardrails, ModelPricing, load_providers
+from fhir_copilot.ops.audit.signing import key_is_configured
 from fhir_copilot.ops.identity import load_api_keys, require_auth
+from fhir_copilot.ops.logging import get_request_id
 from fhir_copilot.ops.redaction import hash_patient_id, text_shape
 from fhir_copilot.ops.tracing import get_tracer
 from fhir_copilot.providers.base import Provider
@@ -89,10 +92,13 @@ def health(store: StoreDep, provider: ProviderDep) -> HealthResponse:
         patient_count=len(store.list_patients()),
         auth_required=require_auth(),
         api_key_count=len(load_api_keys()),
+        audit_backend=get_audit_sink().backend,
+        draft_signing_key_configured=key_is_configured(),
         rate_limit_per_minute=ops.rate_limit.requests_per_minute,
         budget_limit_usd=budget.daily_limit_usd,
         budget_spent_usd_today=round(budget.spent_today_usd(), 6),
         # 記憶體計數,重啟歸零——把起算時間攤開講,不假裝它是持久的
+        budget_persistent=budget.is_persistent,
         budget_counting_since=budget.counting_since.isoformat(timespec="seconds"),
     )
 
@@ -199,8 +205,20 @@ def propose_note(
 
 @router.post("/care-notes/confirm")
 def confirm_note(request: ConfirmCareNoteRequest, caller: CallerDep) -> ConfirmedCareNote:
-    del caller
-    return confirm_and_log(request.draft, audit_log_path=audit_log_path())
+    """唯一的寫入路徑。**先驗簽再寫**——通過認證不等於這份草稿是本系統產生的。"""
+    try:
+        return confirm_and_log(
+            request.draft,
+            sink=get_audit_sink(),
+            actor=caller,
+            request_id=get_request_id(),
+        )
+    except DraftSignatureError as exc:
+        # 400 而不是 500:這是 client 送了無效的東西,不是伺服器壞掉
+        raise HTTPException(
+            status_code=400,
+            detail="草稿簽章驗證失敗——這份草稿不是由本系統產生的,或內容已被修改。",
+        ) from exc
 
 
 @router.get("/providers")

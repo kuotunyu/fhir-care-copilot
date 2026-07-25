@@ -12,6 +12,9 @@ services:
       # 沒設就不匯出 trace(span 照樣建立,只是沒有 exporter)。
       # 用 --profile dev 起 Jaeger 時,下面這個預設值會把 trace 送過去。
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # 沒設就用檔案模式的稽核軌跡(服務照樣起得來,/api/health 會標明)。
+      # 要用 Postgres:docker compose --profile db up
+      DATABASE_URL: ${DATABASE_URL:-}
 
   # 「沒有消費端的可觀測性等於沒做」——產出 trace 卻沒地方看,只是換個形式的
   # 堆技術。這個 service 只在 `docker compose --profile dev up` 時啟動,
@@ -22,6 +25,28 @@ services:
   #   然後開 http://localhost:16686
   #
   # 不想跑容器也看得到:reports/traces/ 有 commit 進 repo 的 trace 樣本。
+  # 稽核軌跡的 Postgres 後端。只在 `docker compose --profile db up` 時啟動,
+  # **不會進 production image**(它是獨立容器,Dockerfile 完全不知道它存在)。
+  #
+  #   docker compose --profile db up -d postgres
+  #   DATABASE_URL=postgresql://copilot:copilot@localhost:5432/copilot docker compose up
+  #
+  # 沒有它服務照樣跑,稽核軌跡退回 JSONL 檔案模式——這是刻意保留的降級路徑。
+  postgres:
+    profiles: ["db"]
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+      POSTGRES_DB: copilot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
   jaeger:
     profiles: ["dev"]
     image: jaegertracing/all-in-one:1.62.0

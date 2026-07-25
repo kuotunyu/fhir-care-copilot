@@ -17,6 +17,11 @@ dependencies = [
     "prometheus-client>=0.21",
 ]
 
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.2",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

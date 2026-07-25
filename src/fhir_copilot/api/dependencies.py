@@ -29,7 +29,8 @@ from fhir_copilot.config import (
     load_providers,
 )
 from fhir_copilot.ops import errors
-from fhir_copilot.ops.budget import DailyBudget
+from fhir_copilot.ops.audit.sinks import AuditSink, resolve_audit_sink
+from fhir_copilot.ops.budget import BudgetStore, DailyBudget
 from fhir_copilot.ops.circuit import CircuitBreaker
 from fhir_copilot.ops.config import OpsConfig, load_ops
 from fhir_copilot.ops.identity import (
@@ -187,8 +188,17 @@ def get_rate_limiter() -> TokenBucketLimiter:
 
 
 @lru_cache
+def get_audit_sink() -> AuditSink:
+    """有 ``DATABASE_URL`` 就用 Postgres,否則退回 JSONL(見 ops/audit/sinks.py)。"""
+    return resolve_audit_sink(audit_log_path())
+
+
+@lru_cache
 def get_budget() -> DailyBudget:
-    return DailyBudget(daily_limit_usd=get_ops().budget.daily_limit_usd)
+    """有 Postgres 時把每日計數存進去,重啟不歸零;否則維持記憶體計數。"""
+    sink = get_audit_sink()
+    store = sink if isinstance(sink, BudgetStore) else None
+    return DailyBudget(daily_limit_usd=get_ops().budget.daily_limit_usd, store=store)
 
 
 def guard_protected(request: Request) -> str:
@@ -286,3 +296,4 @@ def reset_caches() -> None:
     get_budget.cache_clear()
     get_metrics.cache_clear()
     get_circuit_breaker.cache_clear()
+    get_audit_sink.cache_clear()

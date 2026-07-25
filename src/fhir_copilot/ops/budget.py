@@ -16,18 +16,41 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime, timedelta
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class BudgetStore(Protocol):
+    """持久化的計數後端(Phase 4 的 Postgres)。
+
+    用 Protocol 而不是 ``isinstance(PostgresAuditSink)``:後者會強迫無條件
+    import psycopg,那正好破壞「沒有 DATABASE_URL 也要能跑」這個硬性要求。
+    """
+
+    def budget_spent(self, day: str) -> float: ...
+
+    def budget_add(self, day: str, amount: float) -> float: ...
 
 
 class DailyBudget:
-    """全 process 的當日累計成本(UTC 日界重置)。"""
+    """當日累計成本(UTC 日界重置)。
 
-    def __init__(self, *, daily_limit_usd: float) -> None:
+    有 ``store`` 時計數存在資料庫,**重啟不歸零**、多實例共用同一個額度;
+    沒有時退回記憶體計數(``/api/health`` 會標明起算時間)。
+    """
+
+    def __init__(self, *, daily_limit_usd: float, store: BudgetStore | None = None) -> None:
         self.daily_limit_usd = daily_limit_usd
+        self._store = store
         self._lock = threading.Lock()
         self._day = self._today()
         self._spent_usd = 0.0
-        # 誠實揭露用:這個計數是從什麼時候開始算的
+        # 誠實揭露用:這個計數是從什麼時候開始算的(記憶體模式才有意義)
         self.counting_since = datetime.now(UTC)
+
+    @property
+    def is_persistent(self) -> bool:
+        return self._store is not None
 
     @staticmethod
     def _today() -> str:
@@ -47,18 +70,22 @@ class DailyBudget:
             self._spent_usd = 0.0
 
     def spent_today_usd(self) -> float:
+        if self._store is not None:
+            return self._store.budget_spent(self._today())
         with self._lock:
             self._roll_over_if_needed()
             return self._spent_usd
 
     def would_exceed(self, estimated_usd: float) -> bool:
         """這一發打下去會不會超過上限。"""
-        with self._lock:
-            self._roll_over_if_needed()
-            return self._spent_usd + estimated_usd > self.daily_limit_usd
+        return self.spent_today_usd() + estimated_usd > self.daily_limit_usd
 
     def record(self, actual_usd: float) -> None:
         """記錄一次請求的實際花費(回應算出來的 ``estimated_cost_usd``)。"""
+        if self._store is not None:
+            # 原子累加,不是「先讀再寫」——後者在併發下會漏記
+            self._store.budget_add(self._today(), actual_usd)
+            return
         with self._lock:
             self._roll_over_if_needed()
             self._spent_usd += actual_usd
