@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-07-25T18:24:17+00:00",
+  "what_this_is": "一次 POST /api/chat 的完整 trace。四層鏈路:HTTP → agent loop → 每次工具執行 → 每次 provider 呼叫。span 屬性經過 PII 遮蔽,不含病患姓名、問題內容或完整 patient_id。",
+  "dataset": "subset_100",
+  "provider": "mock(固定延遲 0ms;真實 provider 的延遲不在這份樣本裡)",
+  "question_length": 10,
+  "answer_summary": {
+    "refused": false,
+    "evidence_count": 1,
+    "latency_ms": 0
+  },
+  "span_count": 5,
+  "spans": [
+    {
+      "name": "POST /api/chat",
+      "trace_id": "f42769acb3cb1d7170c452a39e890e9e",
+      "span_id": "79ca4edf0ae7cbb0",
+      "parent_span_id": null,
+      "start_time": 1785003857621184500,
+      "end_time": 1785003857628097400,
+      "duration_ms": 6.913,
+      "status": "UNSET",
+      "attributes": {
+        "http.request.method": "POST",
+        "http.route": "/api/chat",
+        "http.response.status_code": 200,
+        "request.id": "51a10b73913c4eb694b6a6eebb50393c"
+      }
+    },
+    {
+      "name": "agent.answer",
+      "trace_id": "f42769acb3cb1d7170c452a39e890e9e",
+      "span_id": "a002aef8e2ebec59",
+      "parent_span_id": "79ca4edf0ae7cbb0",
+      "start_time": 1785003857626492800,
+      "end_time": 1785003857627479600,
+      "duration_ms": 0.987,
+      "status": "UNSET",
+      "attributes": {
+        "caller": "anonymous",
+        "patient.ref": "6c5671c3",
+        "question.length": 10,
+        "agent.refused": false,
+        "agent.evidence_count": 1,
+        "agent.input_tokens": 2,
+        "agent.output_tokens": 6
+      }
+    },
+    {
+      "name": "provider.start",
+      "trace_id": "f42769acb3cb1d7170c452a39e890e9e",
+      "span_id": "74f18b5c942f2878",
+      "parent_span_id": "a002aef8e2ebec59",
+      "start_time": 1785003857626533600,
+      "end_time": 1785003857626559500,
+      "duration_ms": 0.026,
+      "status": "UNSET",
+      "attributes": {
+        "provider.name": "mock",
+        "provider.model_id": "mock-deterministic",
+        "provider.input_chars": 10,
+        "provider.input_tokens": 2,
+        "provider.output_tokens": 0,
+        "provider.tool_calls": 1,
+        "provider.has_final_answer": false
+      }
+    },
+    {
+      "name": "tool.list_active_medications",
+      "trace_id": "f42769acb3cb1d7170c452a39e890e9e",
+      "span_id": "9c5ac27f916550a4",
+      "parent_span_id": "a002aef8e2ebec59",
+      "start_time": 1785003857626858700,
+      "end_time": 1785003857627026600,
+      "duration_ms": 0.168,
+      "status": "UNSET",
+      "attributes": {
+        "tool.name": "list_active_medications",
+        "tool.ok": true,
+        "tool.evidence_count": 1
+      }
+    },
+    {
+      "name": "provider.continue",
+      "trace_id": "f42769acb3cb1d7170c452a39e890e9e",
+      "span_id": "fdc6a2d0ed6da23b",
+      "parent_span_id": "a002aef8e2ebec59",
+      "start_time": 1785003857627265300,
+      "end_time": 1785003857627286800,
+      "duration_ms": 0.021,
+      "status": "UNSET",
+      "attributes": {
+        "provider.name": "mock",
+        "provider.model_id": "mock-deterministic",
+        "provider.tool_outcomes": 1,
+        "provider.input_tokens": 0,
+        "provider.output_tokens": 6,
+        "provider.tool_calls": 0,
+        "provider.has_final_answer": true
+      }
+    }
+  ]
+}

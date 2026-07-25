@@ -9,3 +9,24 @@ services:
       FHIR_COPILOT_PROVIDER: ${FHIR_COPILOT_PROVIDER:-mock}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # 沒設就不匯出 trace(span 照樣建立,只是沒有 exporter)。
+      # 用 --profile dev 起 Jaeger 時,下面這個預設值會把 trace 送過去。
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+  # 「沒有消費端的可觀測性等於沒做」——產出 trace 卻沒地方看,只是換個形式的
+  # 堆技術。這個 service 只在 `docker compose --profile dev up` 時啟動,
+  # **不會進 production image**(它是獨立容器,Dockerfile 完全不知道它存在)。
+  #
+  #   docker compose --profile dev up
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile dev up
+  #   然後開 http://localhost:16686
+  #
+  # 不想跑容器也看得到:reports/traces/ 有 commit 進 repo 的 trace 樣本。
+  jaeger:
+    profiles: ["dev"]
+    image: jaegertracing/all-in-one:1.62.0
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318" # OTLP over HTTP(應用程式送 trace 進來的入口)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
