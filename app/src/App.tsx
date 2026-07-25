@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { api } from './api'
 import { ChatPanel } from './components/ChatPanel'
@@ -16,8 +16,15 @@ function App() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
 
+  const refreshHealth = useCallback(() => {
+    api
+      .health()
+      .then(setHealth)
+      .catch(() => setHealth(null))
+  }, [])
+
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null))
+    refreshHealth()
     api
       .listPatients()
       .then((list) => {
@@ -26,7 +33,7 @@ function App() {
       })
       .catch(() => setPatients([]))
       .finally(() => setPatientsLoading(false))
-  }, [])
+  }, [refreshHealth])
 
   useEffect(() => {
     if (!selectedId) return
@@ -43,7 +50,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <StatusBar health={health} />
+      <StatusBar health={health} onApiKeyChange={refreshHealth} />
 
       <main className="app-main">
         <PatientSelector

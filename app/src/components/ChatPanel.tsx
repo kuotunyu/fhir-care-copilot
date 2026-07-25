@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { api, ApiError } from '../api'
+import { api, describeApiError } from '../api'
 import type { ChatTurn } from '../types'
 import { EvidenceDrawer } from './EvidenceDrawer'
 import { StatusBadge } from './StatusBadge'
@@ -27,7 +27,8 @@ export function ChatPanel({ patientId, patientName }: Props) {
       const response = await api.chat(patientId, question)
       setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, response, pending: false } : t)))
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : '網路連線失敗,請稍後再試。'
+      // 不直接顯示後端的 detail——照護人員要知道的是「現在該怎麼辦」,不是 HTTP 語意
+      const message = describeApiError(err)
       setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, error: message, pending: false } : t)))
     } finally {
       queueMicrotask(() => {

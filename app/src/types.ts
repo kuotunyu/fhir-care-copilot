@@ -77,6 +77,14 @@ export interface HealthInfo {
   model_id: string
   demo_mode: boolean
   patient_count: number
+  // 營運層狀態:哪些保護開著、今日用了多少額度
+  auth_required: boolean
+  api_key_count: number
+  rate_limit_per_minute: number
+  budget_limit_usd: number
+  budget_spent_usd_today: number
+  /** 記憶體計數,重啟歸零——所以要一起顯示起算時間 */
+  budget_counting_since: string
 }
 
 export interface CareNoteDraft {

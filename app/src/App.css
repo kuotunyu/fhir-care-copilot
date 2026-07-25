@@ -160,6 +160,112 @@
   color: var(--ink-muted);
 }
 
+/* API key 設定。用原生 <details> 而非自製 dropdown:鍵盤與螢幕閱讀器
+   本來就會用(PRODUCT.md 無障礙原則),而且收合狀態下只佔一行——認證是
+   偶爾才碰的設定,不該常駐佔掉狀態列的空間。 */
+.api-key {
+  font-family: var(--font-body);
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper-raised);
+  max-width: 360px;
+}
+
+.api-key__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.api-key__summary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.api-key__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ink-faint);
+}
+
+.api-key__dot--set {
+  background: var(--teal);
+}
+
+.api-key__form {
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.api-key__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+.api-key__row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.api-key__input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 14.5px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.api-key__input:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+.api-key__button {
+  padding: 7px 14px;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--paper-raised);
+  background: var(--teal);
+  border: 1px solid var(--teal);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.api-key__button--ghost {
+  color: var(--ink-muted);
+  background: transparent;
+  border-color: var(--border-strong);
+}
+
+.api-key__button:focus-visible {
+  outline: 2px solid var(--teal-deep);
+  outline-offset: 2px;
+}
+
+.api-key__hint {
+  margin: 6px 0 0;
+  min-height: 1.2em; /* 佔住高度,訊息出現時不要讓下面的內容跳動 */
+  font-size: 14.5px;
+  color: var(--teal-deep);
+}
+
 /* ---------- 主要三欄版面 ---------- */
 
 .app-main {
