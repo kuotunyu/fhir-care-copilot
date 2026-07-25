@@ -13,7 +13,7 @@
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  height: 100dvh;
 }
 
 /* ---------- 頁首 ---------- */
@@ -23,7 +23,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 28px;
+  padding: 14px 28px;
   border-bottom: 1px solid var(--border);
   background: var(--paper-raised);
   flex-wrap: wrap;
@@ -43,21 +43,18 @@
   border-radius: var(--radius-md);
   background: var(--teal);
   color: var(--paper-raised);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
   box-shadow: var(--shadow-soft);
   flex-shrink: 0;
 }
 
 .app-header h1 {
-  font-size: 21px;
+  font-size: 27px;
   line-height: 1.2;
 }
 
 .app-header__tagline {
-  margin: 2px 0 0;
-  font-size: 12.5px;
+  margin: 3px 0 0;
+  font-size: 16px;
   color: var(--ink-muted);
   letter-spacing: 0.01em;
 }
@@ -69,23 +66,98 @@
   flex-wrap: wrap;
 }
 
-.demo-pill {
+/* 三個面板的動線編號(1 選病患 → 2 看病歷 → 3 問問題)——這是真的操作
+   順序,不是裝飾用的 eyebrow;第一次使用者常見的「不知道要幹嘛」問題
+   直接靠這個回答。 */
+.flow-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: var(--paper-raised);
+  font-family: var(--font-body);
   font-size: 12px;
-  font-weight: 600;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: var(--amber-tint);
-  color: var(--amber);
-  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
-.provider-pill {
-  font-size: 11.5px;
-  padding: 5px 12px;
-  border-radius: 999px;
+.panel-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+/* 狀態說明區塊:原本是兩個擠在一起的小徽章(示範模式/mock·mock-deterministic),
+   看不懂在講什麼、視覺上也很侷促。改成一個有標題+白話說明的區塊,講清楚
+   「現在是不是接了真的 AI、回答從哪裡來」——這是這個工具的信任核心之一
+   (見 PRODUCT.md 設計原則 5),值得給足夠的空間講清楚,不是隨手塞的小標籤。 */
+.status-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 360px;
+  padding: 9px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--paper-sunken);
+}
+
+.status-panel--demo {
+  background: var(--amber-tint);
+  border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+}
+
+.status-panel--live {
   background: var(--teal-tint);
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+}
+
+.status-panel__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--amber);
+}
+
+.status-panel--live .status-panel__dot {
+  background: var(--teal);
+}
+
+.status-panel__text {
+  min-width: 0;
+}
+
+.status-panel__title {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.status-panel--demo .status-panel__title {
+  color: var(--amber);
+}
+
+.status-panel--live .status-panel__title {
   color: var(--teal-deep);
-  border: 1px solid color-mix(in srgb, var(--teal) 25%, transparent);
+}
+
+.status-panel__detail {
+  margin: 2px 0 0;
+  font-size: 15.5px;
+  line-height: 1.35;
+  color: var(--ink-muted);
 }
 
 /* ---------- 主要三欄版面 ---------- */
@@ -93,7 +165,7 @@
 .app-main {
   flex: 1;
   display: grid;
-  grid-template-columns: 264px minmax(320px, 1fr) minmax(340px, 420px);
+  grid-template-columns: 288px minmax(320px, 1fr) minmax(340px, 420px);
   gap: 1px;
   background: var(--border);
   overflow: hidden;
@@ -108,7 +180,10 @@
 @media (max-width: 1080px) {
   .app-main {
     grid-template-columns: 240px 1fr;
-    grid-template-rows: auto 1fr;
+    /* 上排(病患清單+病歷)用 minmax(0,1fr) 而不是 auto——auto 會讓這排
+       跟著病患清單的完整內容高度(6000px+)撐開,把下排的聊天面板擠成
+       0 高度、整個消失。minmax(0,1fr) 才會真的把剩餘高度讓給下排。 */
+    grid-template-rows: minmax(0, 1fr) auto;
   }
   .chat-panel {
     grid-column: 1 / -1;
@@ -117,15 +192,23 @@
 }
 
 @media (max-width: 720px) {
+  /* 手機版直式堆疊,回到「整頁自然變高、一起捲動」——不能沿用桌面版
+     三欄各自固定高度獨立捲動的做法,不然三欄會被硬塞進一個螢幕高度裡
+     各自擠壓成一小條。 */
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+  }
   .app-main {
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow-y: visible;
   }
   .patient-rail,
   .chart-panel,
   .chat-panel {
     max-height: none;
+    overflow-y: visible;
   }
 }
 
@@ -146,7 +229,10 @@
 }
 
 .patient-rail__header h2 {
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-muted);
@@ -155,18 +241,18 @@
 }
 
 .patient-rail__count {
-  font-size: 12px;
-  color: var(--ink-faint);
+  font-size: 15px;
+  color: var(--ink-muted);
 }
 
 .patient-rail__search input {
   width: 100%;
-  padding: 9px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--paper-raised);
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 17px;
 }
 
 .patient-rail__search input:focus-visible {
@@ -175,8 +261,8 @@
 
 .patient-rail__empty,
 .chart-panel__empty {
-  color: var(--ink-faint);
-  font-size: 13.5px;
+  color: var(--ink-muted);
+  font-size: 17px;
   padding: 24px 4px;
   text-align: center;
 }
@@ -213,8 +299,8 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 10px;
+  gap: 12px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
@@ -236,15 +322,30 @@
 .patient-card__avatar {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--paper-sunken);
-  color: var(--teal-deep);
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 15px;
   flex-shrink: 0;
+}
+
+/* 每位病患依 id 固定分配三色之一(見 avatarPalette()),讓頭像圈圈一眼
+   看出來是「每個人自己的」,不是全部長一樣的神秘徽章。 */
+.patient-card__avatar--teal {
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+}
+
+.patient-card__avatar--terracotta {
+  background: var(--terracotta-tint);
+  color: var(--terracotta);
+}
+
+.patient-card__avatar--amber {
+  background: var(--amber-tint);
+  color: var(--amber);
 }
 
 .patient-card.is-selected .patient-card__avatar {
@@ -258,18 +359,20 @@
   min-width: 0;
 }
 
+/* 姓名允許換成兩行,不用刪節號截斷——欄寬有限但長姓名(常見於合成資料)
+   截斷成「Aaron697 Brekke4...」反而更難辨識,兩行完整顯示更清楚。 */
 .patient-card__name {
-  font-size: 13.5px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .patient-card__sub {
-  font-size: 11.5px;
-  color: var(--ink-faint);
+  font-size: 15px;
+  color: var(--ink-muted);
 }
 
 /* ---------- 病歷時間軸 ---------- */
@@ -282,12 +385,12 @@
 }
 
 .chart-panel__header h2 {
-  font-size: 24px;
+  font-size: 29px;
 }
 
 .chart-panel__subline {
-  margin: 3px 0 0;
-  font-size: 13px;
+  margin: 4px 0 0;
+  font-size: 16.5px;
   color: var(--ink-muted);
 }
 
@@ -301,12 +404,12 @@
 .chart-tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 14px;
+  gap: 7px;
+  padding: 12px 16px;
   background: transparent;
   border: none;
   border-bottom: 2.5px solid transparent;
-  font-size: 13.5px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--ink-muted);
   white-space: nowrap;
@@ -318,11 +421,11 @@
 }
 
 .chart-tab__count {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 999px;
+  font-size: 14.5px;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
   background: var(--paper-sunken);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 
 .chart-tab.is-active .chart-tab__count {
@@ -334,33 +437,36 @@
   flex: 1;
 }
 
+/* 雙欄 grid,而不是單欄清單一路撐滿寬度——病歷項目的文字通常不長,
+   單欄在寬螢幕上會留下大片右側空白;auto-fit 讓內容自然決定要排幾欄。 */
 .record-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2px 28px;
+  align-content: start;
 }
 
 .record-row {
   display: flex;
   gap: 12px;
-  padding: 12px 6px;
+  padding: 13px 6px;
   border-bottom: 1px solid var(--paper-sunken);
 }
 
 .record-row__dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  margin-top: 7px;
+  margin-top: 8px;
   flex-shrink: 0;
 }
 
 .record-row__title {
   margin: 0;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -371,23 +477,23 @@
 }
 
 .record-row__meta {
-  margin: 3px 0 0;
-  font-size: 12px;
-  color: var(--ink-faint);
+  margin: 4px 0 0;
+  font-size: 15.5px;
+  color: var(--ink-muted);
 }
 
 .record-row__activities {
-  margin: 6px 0 0;
-  font-size: 12.5px;
+  margin: 7px 0 0;
+  font-size: 16px;
   color: var(--ink-muted);
 }
 
 .status-chip {
   align-self: flex-start;
-  font-size: 11px;
+  font-size: 14.5px;
   font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 999px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   margin-top: 2px;
 }
@@ -399,7 +505,7 @@
 
 .status-chip--closed {
   background: var(--paper-sunken);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 
 /* ---------- 聊天面板 ---------- */
@@ -411,30 +517,100 @@
 }
 
 .chat-panel__header {
-  padding: 20px 22px 14px;
+  padding: 14px 22px 10px;
   border-bottom: 1px solid var(--border);
 }
 
 .chat-panel__header h2 {
-  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 21px;
 }
 
 .chat-log {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   list-style: none;
   margin: 0;
-  padding: 18px 20px;
+  padding: 12px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.chat-log__hint {
-  color: var(--ink-faint);
-  font-size: 13px;
+/* 還沒有任何對話時,不要撐滿整個面板高度——不然下面的輸入框會被硬生生
+   推到面板最底部,跟看得到的建議問題中間隔出一大片空白,看起來像輸入框
+   被藏起來了。這裡讓內容決定高度,輸入框自然貼在建議問題正下方。
+   flex-shrink 刻意設 0(不是 1)——這塊裝的是建議問題跟指引文字,是使用者
+   要操作的東西,寧可讓下面的信任卡片先讓步、也不能讓這塊被壓縮到跟輸入框
+   疊在一起。 */
+.chat-log--empty {
+  flex: 0 0 auto;
+}
+
+/* 空狀態:不留大片空白,直接給可點擊的建議問題,順便把視線導向下方輸入框。
+   刻意貼齊頂部(不是 justify-content:center)——垂直置中在較矮的視窗下
+   會把建議問題推到看不到的地方,反而讓「該做什麼」更難找到。 */
+.chat-log__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 16px 8px;
   text-align: center;
-  padding: 24px 12px;
+}
+
+.chat-log__empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.chat-log__empty-hint {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-muted);
+}
+
+.chat-log__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 2px;
+}
+
+.suggestion-chip {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--paper-raised);
+  color: var(--teal-deep);
+  font-size: 16.5px;
+  font-weight: 500;
+  text-align: left;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.suggestion-chip:hover {
+  background: var(--teal-tint);
+  border-color: var(--teal);
+  transform: translateX(2px);
+}
+
+.chat-log__empty-arrow {
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--terracotta);
 }
 
 .chat-turn {
@@ -446,24 +622,22 @@
 
 .chat-bubble {
   max-width: 92%;
-  padding: 11px 14px;
-  border-radius: var(--radius-md);
-  font-size: 13.8px;
-  line-height: 1.55;
+  padding: 13px 17px;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  line-height: 1.6;
 }
 
 .chat-bubble--question {
   align-self: flex-end;
   background: var(--teal);
   color: var(--paper-raised);
-  border-bottom-right-radius: 4px;
 }
 
 .chat-bubble--answer {
   align-self: flex-start;
   background: var(--paper-raised);
   border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
   color: var(--ink);
 }
 
@@ -480,12 +654,12 @@
 
 .refusal-tag {
   display: inline-block;
-  font-size: 10.5px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--red);
   background: color-mix(in srgb, var(--red) 12%, var(--paper-raised));
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   margin-bottom: 6px;
 }
 
@@ -496,7 +670,7 @@
 
 .chat-bubble__limitations {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 15.5px;
   color: var(--ink-muted);
   font-style: italic;
 }
@@ -512,8 +686,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  color: var(--ink-faint);
+  font-size: 14.5px;
+  color: var(--ink-muted);
   flex-wrap: wrap;
 }
 
@@ -551,7 +725,7 @@
 }
 
 .evidence-drawer {
-  font-size: 12px;
+  font-size: 15.5px;
 }
 
 .evidence-drawer summary {
@@ -572,7 +746,7 @@
   content: '▸';
   display: inline-block;
   transition: transform 140ms ease;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .evidence-drawer[open] summary::before {
@@ -580,9 +754,9 @@
 }
 
 .evidence-drawer__count {
-  font-size: 10.5px;
-  padding: 1px 6px;
-  border-radius: 999px;
+  font-size: 14px;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
   background: var(--teal-tint);
   color: var(--teal-deep);
 }
@@ -594,13 +768,13 @@
   border-top: 1px dashed var(--border);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .evidence-item {
   display: flex;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 15px;
   flex-wrap: wrap;
 }
 
@@ -615,33 +789,68 @@
 
 .chat-composer {
   display: flex;
-  gap: 10px;
-  padding: 14px 18px;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 20px 14px;
   border-top: 1px solid var(--border);
   background: var(--paper-raised);
 }
 
-.chat-composer textarea {
+.chat-composer__field {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-composer__field label {
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  padding: 0 2px;
+}
+
+/* 輸入框本身要一眼看出「這裡可以打字」:比其他輸入元件更明顯的邊框、
+   淺色底、聚焦時有明顯外光暈——不能只靠 placeholder 文字當唯一線索。 */
+.chat-composer textarea {
   resize: none;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-strong);
   background: var(--paper);
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 18px;
   line-height: 1.5;
+  box-shadow: var(--shadow-soft);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.chat-composer textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.chat-composer textarea:hover {
+  border-color: var(--teal);
 }
 
 .chat-composer textarea:focus-visible {
-  border-color: var(--terracotta);
+  outline: none;
+  border-color: var(--teal);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--teal) 22%, transparent),
+    var(--shadow-soft);
 }
 
 .btn {
   border: none;
-  border-radius: var(--radius-sm);
-  padding: 0 20px;
-  font-size: 13.5px;
+  border-radius: var(--radius-md);
+  padding: 0 26px;
+  height: 46px;
+  font-size: 17px;
   font-weight: 700;
   transition:
     transform 120ms ease,
@@ -663,6 +872,57 @@
   cursor: not-allowed;
 }
 
+/* 對話還沒開始時,輸入框下面原本是一片空白——用這個工具最重要的信任
+   承諾(證據、拒答、不做診斷)把這塊空間填起來,而不是留白置之不理。
+   flex:1 讓它撐滿面板剩餘高度,內容置中,看起來是設計過的收尾,不是
+   隨便塞進去的。開始對話後這塊就不會出現(讓位給真正的對話紀錄)。 */
+.chat-trust-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 28px;
+  list-style: none;
+  border-top: 1px solid var(--border);
+  background: var(--paper-sunken);
+}
+
+.chat-trust-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.chat-trust-list__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.chat-trust-list__icon--yes {
+  background: var(--teal-tint);
+  color: var(--teal-deep);
+}
+
+.chat-trust-list__icon--no {
+  background: var(--red-tint);
+  color: var(--red);
+}
+
 /* ---------- 頁尾 ---------- */
 
 .app-footer {
@@ -673,8 +933,8 @@
 
 .app-footer p {
   margin: 0;
-  font-size: 11.5px;
-  color: var(--ink-faint);
+  font-size: 15px;
+  color: var(--ink-muted);
   text-align: center;
 }
 

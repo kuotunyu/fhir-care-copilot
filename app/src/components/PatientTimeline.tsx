@@ -53,6 +53,12 @@ export function PatientTimeline({ summary, loading, error }: Props) {
   return (
     <section className="chart-panel" aria-label="病歷摘要">
       <header className="chart-panel__header">
+        <p className="panel-eyebrow">
+          <span className="flow-step" aria-hidden="true">
+            2
+          </span>
+          病歷時間軸
+        </p>
         <h2>{summary.demographics?.name ?? '病患'}</h2>
         <p className="chart-panel__subline">
           {summary.demographics?.gender === 'female'

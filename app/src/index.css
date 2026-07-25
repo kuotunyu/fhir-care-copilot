@@ -2,7 +2,7 @@
    紙本病歷的溫度(奶油紙色、襯線標題)+ 現代臨床工具的清晰資訊層級。
    紅色只保留給拒答/警示狀態,其餘一律用深松石綠與赤陶橘。 */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
   --paper: #f6f1e7;
@@ -30,13 +30,15 @@
   --shadow-soft: 0 1px 2px rgba(29, 42, 40, 0.06), 0 6px 20px -8px rgba(29, 42, 40, 0.18);
   --shadow-lift: 0 12px 32px -12px rgba(29, 42, 40, 0.3);
 
-  --font-display: 'Fraunces', 'Noto Serif TC', serif;
+  --font-display: 'Newsreader', 'Noto Serif TC', serif;
   --font-body: 'Work Sans', 'Noto Sans TC', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
+  /* 圓角降到近乎直角:卡片/按鈕/輸入框/標籤一律用這個尺度。圓形頭像與
+     狀態圓點是功能性形狀(不是裝飾),不受這個尺度限制,固定 50%。 */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
 
   color-scheme: light dark;
 }
@@ -124,8 +126,8 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: 15.5px;
-  line-height: 1.55;
+  font-size: 19px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   background-image:
     radial-gradient(circle at 18% -8%, rgba(31, 92, 79, 0.08), transparent 42%),
@@ -133,8 +135,12 @@ body {
   background-attachment: fixed;
 }
 
+/* 固定高度(不是 min-height)——三欄版面要各自獨立捲動,子欄位的
+   overflow-y:auto 才有一個確切的高度可以依據,不然内容最長的那一欄
+   (病患清單,100 筆不做虛擬化)會把整頁撐開,變成要滾過整個病患清單
+   才能碰到右邊聊天輸入框。 */
 #root {
-  min-height: 100dvh;
+  height: 100dvh;
 }
 
 h1,
