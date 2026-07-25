@@ -31,7 +31,15 @@ from fhir_copilot.config import (
 from fhir_copilot.ops import errors
 from fhir_copilot.ops.budget import DailyBudget
 from fhir_copilot.ops.config import OpsConfig, load_ops
-from fhir_copilot.ops.identity import ANONYMOUS, load_api_keys, require_auth, resolve_label
+from fhir_copilot.ops.identity import (
+    ANONYMOUS,
+    anonymous_bucket_key,
+    load_api_keys,
+    require_auth,
+    resolve_label,
+)
+from fhir_copilot.ops.instrumented_provider import InstrumentedProvider
+from fhir_copilot.ops.metrics import Metrics
 from fhir_copilot.ops.ratelimit import TokenBucketLimiter
 from fhir_copilot.providers.base import Provider
 from fhir_copilot.providers.factory import make_provider
@@ -91,8 +99,19 @@ def get_provider_name() -> str:
 
 
 @lru_cache
+def get_metrics() -> Metrics:
+    return Metrics()
+
+
+@lru_cache
 def get_provider() -> Provider:
-    return make_provider(get_provider_name())
+    """真正的 provider 外面包一層觀測。
+
+    ``Provider`` 是 Protocol 且無狀態,所以 agent loop 分辨不出被包過——
+    provider 呼叫的 span 與錯誤計數因此不需要改 ``agent/loop.py``。
+    """
+    name = get_provider_name()
+    return InstrumentedProvider(make_provider(name), get_metrics(), name)
 
 
 # ---- 營運層(Phase 1:認證、限流、預算上限) ----
@@ -134,7 +153,9 @@ def guard_protected(request: Request) -> str:
        默默降級成匿名只會讓人搞不清楚狀況。
     3. **有設定金鑰,請求沒帶** → 要求認證時 401,否則放行為 ``anonymous``。
 
-    **限流不管有沒有開認證都生效**——demo mode 一樣會花錢。
+    **限流不管有沒有開認證都生效**——demo mode 一樣會花錢。帶金鑰時每把金鑰
+    各自一個桶;匿名時**依來源 IP 分桶**,否則公開 demo 上所有訪客會共用同一個桶
+    而互相餓死彼此(見 ``identity.anonymous_bucket_key``)。
     """
     ops = get_ops()
     keys = load_api_keys()
@@ -156,7 +177,16 @@ def guard_protected(request: Request) -> str:
         else:
             label = matched
 
-    retry_after = get_rate_limiter().acquire(label)
+    # 桶 key 與對外標籤刻意分開:桶 key 在匿名時含 IP(只在記憶體內當 key),
+    # 回傳的 label 永遠不含 IP——IP 是個人資料,不該流進日誌與 metrics。
+    bucket_key = label
+    if label == ANONYMOUS:
+        bucket_key = anonymous_bucket_key(
+            request.client.host if request.client else None,
+            request.headers.get("X-Forwarded-For"),
+        )
+
+    retry_after = get_rate_limiter().acquire(bucket_key)
     if retry_after is not None:
         raise errors.rate_limited(retry_after, ops.rate_limit.requests_per_minute)
     return label
@@ -203,3 +233,4 @@ def reset_caches() -> None:
     get_ops.cache_clear()
     get_rate_limiter.cache_clear()
     get_budget.cache_clear()
+    get_metrics.cache_clear()

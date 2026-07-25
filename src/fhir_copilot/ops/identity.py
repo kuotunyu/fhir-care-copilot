@@ -29,6 +29,31 @@ ANONYMOUS = "anonymous"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
+def anonymous_bucket_key(client_host: str | None, forwarded_for: str | None) -> str:
+    """匿名呼叫者的限流分桶依據:來源 IP。
+
+    **為什麼不能所有匿名請求共用一個桶**:公開 demo(例如 HF Space)上沒有設定
+    任何金鑰,於是每一位訪客都是 ``anonymous``。共用一個桶等於「全世界的訪客
+    一起分 20 次/分鐘」,兩三個人同時玩就互相卡死——限流的職責是公平性,
+    結果卻變成訪客互相餓死彼此。
+
+    **誠實揭露的弱點**:反向代理後面拿不到真實 remote address,只能看
+    ``X-Forwarded-For`` 的第一段,而那個 header **可以偽造**,有心人繞得過。
+    這是可接受的,因為擋錢的主防線是全域每日預算上限(不分身分,偽造不了);
+    限流管的是公平性,不是防惡意。
+
+    回傳值只當作記憶體內的桶 key,**永遠不進日誌**(IP 是個人資料)。
+    對外的身分標籤一律是 ``anonymous``。
+    """
+    if forwarded_for:
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            return f"{ANONYMOUS}:{first}"
+    if client_host:
+        return f"{ANONYMOUS}:{client_host}"
+    return ANONYMOUS
+
+
 def require_auth() -> bool:
     return os.environ.get(REQUIRE_AUTH_ENV, "").strip().lower() in _TRUTHY
 

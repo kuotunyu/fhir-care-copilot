@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from fhir_copilot.api import dependencies
 from fhir_copilot.api.app import create_app
+from fhir_copilot.ops.identity import ANONYMOUS, anonymous_bucket_key
 from fhir_copilot.ops.ratelimit import TokenBucketLimiter
 from tests.conftest import AMY_ID, FIXTURES_DIR, clear_ops_env, write_ops_config
 
@@ -101,6 +102,29 @@ class TestTokenBucket:
             TokenBucketLimiter(requests_per_minute=0, burst=1)
 
 
+class TestAnonymousBucketKey:
+    """匿名訪客的分桶依據。IP 只當桶 key,永遠不進日誌(它是個人資料)。"""
+
+    def test_prefers_forwarded_for(self) -> None:
+        """反向代理後面(HF Space)拿不到真實 remote address。"""
+        assert anonymous_bucket_key("10.0.0.1", "203.0.113.7") == f"{ANONYMOUS}:203.0.113.7"
+
+    def test_takes_the_first_hop_of_forwarded_for(self) -> None:
+        key = anonymous_bucket_key(None, "203.0.113.7, 70.41.3.18, 150.172.238.178")
+
+        assert key == f"{ANONYMOUS}:203.0.113.7"
+
+    def test_falls_back_to_client_host(self) -> None:
+        assert anonymous_bucket_key("10.0.0.1", None) == f"{ANONYMOUS}:10.0.0.1"
+
+    def test_falls_back_to_a_shared_bucket_when_nothing_is_known(self) -> None:
+        """認不出來源時退回共用桶——寧可過嚴,不要變成沒有限流。"""
+        assert anonymous_bucket_key(None, None) == ANONYMOUS
+
+    def test_ignores_blank_forwarded_for(self) -> None:
+        assert anonymous_bucket_key("10.0.0.1", "   ") == f"{ANONYMOUS}:10.0.0.1"
+
+
 class TestOverHttp:
     def test_exceeding_the_limit_returns_429_with_retry_after(
         self, make_client: ClientFactory
@@ -136,6 +160,28 @@ class TestOverHttp:
 
         for _ in range(5):
             assert client.get("/api/health").status_code == 200
+
+    def test_anonymous_visitors_do_not_starve_each_other(
+        self, make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """公開 demo 上每位訪客都是匿名的,他們不該共用同一個額度。
+
+        這是 Phase 1 的實作缺陷:原本所有匿名請求擠進同一個桶,HF Space 上
+        全世界的訪客一起分 20 次/分鐘,兩三個人同時玩就互相卡死。
+        """
+        monkeypatch.delenv("FHIR_COPILOT_API_KEYS", raising=False)
+        client = make_client(requests_per_minute=60, burst=1)
+        visitor_a = {"X-Forwarded-For": "203.0.113.10"}
+        visitor_b = {"X-Forwarded-For": "203.0.113.11"}
+        body = {"patient_id": AMY_ID, "question": "他在吃什麼藥?"}
+
+        first_a = client.post("/api/chat", json=body, headers=visitor_a)
+        second_a = client.post("/api/chat", json=body, headers=visitor_a)
+        first_b = client.post("/api/chat", json=body, headers=visitor_b)
+
+        assert first_a.status_code == 200
+        assert second_a.status_code == 429  # 同一位訪客用光自己的額度
+        assert first_b.status_code == 200  # 另一位訪客不受影響
 
     def test_care_note_endpoints_are_rate_limited_too(self, make_client: ClientFactory) -> None:
         client = make_client(requests_per_minute=60, burst=1)
