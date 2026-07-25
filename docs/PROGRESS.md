@@ -6,6 +6,104 @@
 
 ---
 
+## 2026-07-25（續三）— 營運層 Phase 4（可信任的稽核軌跡）
+
+**這個 Phase 的命題**
+
+「這份稽核軌跡值得信任」是**一個命題**，不是三個功能。只做其中兩件，會得到兩個各自
+不完整的機制：
+
+| 問題 | 沒做的話會怎樣 | 機制 |
+|---|---|---|
+| 進來時是真的嗎 | 防竄改鏈會忠實地保護一筆一開始就是假的紀錄 | 草稿 HMAC 簽章 |
+| 進去後沒被改嗎 | 有人改了紀錄，而你永遠不會知道 | hash chain |
+| 併發下不會遺失嗎 | 紀錄靜靜地少了幾筆，或整行交錯壞掉 | advisory lock／threading.Lock |
+
+第一點特別容易被漏掉，因為它看起來像認證的責任。**它不是**：認證回答的是「是誰打進來的」，
+而 `confirm` 收的是一份完整的草稿——通過認證的呼叫者仍然可以送出從來沒經過 `propose`
+的內容，包括自己編的 `proposed_at`。
+
+**做了什麼**
+
+- `ops/audit/`：`chain`（hash chain 與驗證）、`signing`（草稿 HMAC）、`sinks`（JSONL）、`postgres`
+- `scripts/verify_audit_chain.py`：掃全表，壞掉時指出是哪一列，exit code 1
+- 稽核紀錄補上 `actor` 與 `request_id`——原本只有 4 個欄位，事後看不出是誰透過哪次請求寫的
+- 有 DB 時每日預算計數也存 DB，**重啟不歸零**
+- `docker-compose.yml` 加 `profiles: ["db"]` 的 postgres；Dockerfile 裝 `--extra postgres`
+- CI 加一個帶 Postgres service container 的 job
+- 設計取捨見 [ADR 0007](decisions/0007-trustworthy-audit-trail.md)
+
+**真實測試輸出**
+
+```
+uv run ruff check .        → All checks passed!
+uv run ruff format --check → 91 files already formatted
+uv run mypy                → Success: no issues found in 91 source files
+uv run pytest              → 244 passed, 6 skipped（Phase 3 結束時 224）
+```
+
+6 個 skipped 是 Postgres 整合測試——沒有 `DATABASE_URL` 就跳過。對真的資料庫跑：
+
+```
+docker compose --profile db up -d postgres
+DATABASE_URL=postgresql://... uv run pytest tests/test_audit_postgres.py
+→ 6 passed
+```
+
+驗證程式對真的 Postgres 竄改後的輸出（直接下 `UPDATE ... SET note_text`）：
+
+```
+稽核鏈有問題(3 列中發現 1 處):
+  - 第 2 列(sequence=1):內容被改過(row_hash 應為 900e2fc8ab40…,實際是 53da2691bbc8…)
+exit code = 1
+```
+
+容器 + Postgres 的端到端（`docker compose --profile db up --build`）：
+
+```
+GET /api/health → audit_backend=postgres, budget_persistent=True, patient_count=100
+propose → 簽章長度 64
+confirm → HTTP 200
+偽造草稿 → HTTP 400（什麼都沒寫進去）
+
+資料庫裡:
+ sequence |   actor   |   req    |     prev     |     row
+        0 | anonymous | a80390fd | 000000000000 | 9eb3a8eef5c5
+```
+
+**image 體積代價（實測）**：500 MB → **527 MB（+27 MB，+5.4%）**，來自 `psycopg[binary]`。
+
+**決策 / 發現**
+
+- **真的跑 Postgres 才抓到的併發 bug。** 原本用
+  `SELECT ... ORDER BY sequence DESC LIMIT 1 FOR UPDATE` 鎖鏈尾，看起來完全合理，
+  但它**只鎖住已經存在的那一列**，擋不住「另一個交易在它後面插入新列」：兩個併發的
+  append 各自鎖住同一個鏈尾，先完成的插入 `N+1`，後完成的醒來時手上還是舊鏈尾，
+  也插 `N+1` → `UniqueViolation: Key (sequence)=(1) already exists`。表是空的時候更徹底：
+  沒有列可鎖，所有交易一起衝 `sequence=0`。
+  改用 `pg_advisory_xact_lock`——鎖的是「append 這個動作」而不是某一列。
+  **這個 bug 用 mock 或單元測試永遠測不到**，跟 Phase 0 的 docker build 是同一類教訓
+- **hash chain 放在紀錄模型層而不是資料庫層**。如果鏈靠 Postgres 的觸發器實作，
+  「無 `DATABASE_URL` 就退回檔案模式」會同時退掉防竄改——而那個降級是刻意保留的
+  產品特性，不該是安全破口
+- **設定了 `DATABASE_URL` 卻沒裝驅動時刻意讓它炸掉**，不默默退回檔案模式：
+  那會讓人以為紀錄進了資料庫，其實在檔案裡。稽核軌跡的位置不能靠猜
+- **把「這個機制的極限」寫成一個會通過的測試**
+  （`test_recomputing_the_whole_chain_is_not_detected`）：有寫入權限的人可以重算整條鏈，
+  驗證就會通過。寫成測試而不只是文件裡的一句話，是為了讓「我們知道這件事」變成
+  可執行的紀錄
+- **舊 JSONL 稽核檔不自動遷移**。新格式從新檔案開始——把沒有鏈的舊紀錄塞進鏈裡，
+  等於宣稱它們有從來不存在的保證
+
+**下一步**
+
+- Phase 5（最終負載測試與對照）：重跑完整併發矩陣、前後對照表、真 provider 少量端到端
+  取樣、**故障注入場景表**。後者正好補上 Phase 3 留下的缺口——「provider 掛掉時
+  threadpool 不會被佔滿」目前只驗到單元與整合測試層級，還沒有負載數字支持
+- 未做：稽核鏈的外部錨定（把鏈尾送到這個系統改不到的地方）；檔案模式的多 process 安全
+
+---
+
 ## 2026-07-25（續二）— 營運層 Phase 3（韌性）
 
 **做了什麼**

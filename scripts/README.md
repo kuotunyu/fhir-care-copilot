@@ -9,6 +9,9 @@
   `reports/model_comparison.md` 的一頁式比較報告
 - `run_loadtest.py`（營運層 Phase 0）— 起後端、跑 k6 併發矩陣、收 summary，
   輸出到 `reports/loadtest/`
+- `verify_audit_chain.py`（營運層 Phase 4）— 掃描稽核軌跡的 hash chain，
+  壞掉時**指出是哪一列**；exit code 1 方便接進 cron 或 CI。有 `DATABASE_URL`
+  就驗 Postgres，沒有就驗 JSONL
 - `loadtest/`（營運層 Phase 0）— k6 腳本
 - `export_trace_sample.py`（營運層 Phase 2）— 跑一次完整 `POST /api/chat`，把 trace
   匯出成 JSON 存進 `reports/traces/`（commit 進 repo 的可觀測性證據）

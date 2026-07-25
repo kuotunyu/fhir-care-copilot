@@ -6,8 +6,8 @@
 - `pricing.yaml`（M3）— 各模型每 1M tokens 單價（成本估算用；價格會漂移，改這裡即可）
 - `guardrails.yaml`（M3）— 單次對話在 agent loop 內的行為：max tool rounds、loop 累計逾時、
   輸入長度上限
-- `ops.yaml`（營運層 Phase 0/1）— 服務對外的營運行為：API key header 名稱、每 key 限流速率、
-  每日成本上限、負載測試參數
+- `ops.yaml`（營運層）— 服務對外的營運行為：API key header 名稱、每 key 限流速率、
+  每日成本上限、單次 provider 呼叫的逾時與重試/熔斷閾值、負載測試參數
 
 `guardrails.yaml` 與 `ops.yaml` 刻意分開：前者管「一次問答在 loop 裡能做什麼」，後者管
 「這個服務對外要怎麼被安全地營運」。兩者的變更理由不同，混在一起會分不清楚改一個值會影響什麼。

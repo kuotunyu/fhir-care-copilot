@@ -68,6 +68,26 @@ build 會下載 85 MB Synthea 樣本烤進 image,第一次約數分鐘。
 - `/metrics` 必須在 `app.mount("/")` **之前**註冊,否則會被 `StaticFiles` 的
   catch-all 吃掉,而且症狀只是回 404 或前端首頁,不會有任何提示
 
+## 稽核軌跡(營運層 Phase 4)
+
+| 動作 | 指令 |
+|---|---|
+| 起 Postgres(db-only profile) | `docker compose --profile db up -d postgres` |
+| 跑 Postgres 整合測試 | `DATABASE_URL=postgresql://copilot:copilot@localhost:5432/copilot uv run pytest tests/test_audit_postgres.py` |
+| 驗證稽核鏈 | `uv run python scripts/verify_audit_chain.py`(exit 1 = 有問題) |
+| 裝 postgres extra | `uv sync --extra postgres` |
+
+**踩過的坑**:
+
+- **`SELECT ... FOR UPDATE` 鎖不住「還沒出現的列」。** 用它鎖鏈尾看起來合理,
+  但兩個併發 append 會各自鎖住同一列、然後都插入 `N+1` → 主鍵衝突;表是空的時候
+  更徹底(沒有列可鎖)。要用 `pg_advisory_xact_lock` 鎖「append 這個動作」。
+  **這個 bug 用 mock 測不到,一定要對真的 Postgres 跑**
+- 沒有 `DATABASE_URL` 時 Postgres 測試會整組 skip——看到 `6 skipped` 是正常的,
+  不是測試壞了
+- `docker compose up` 預設**不會重建 image**。改了程式之後要 `--build`,
+  否則會拿到舊的 image 而症狀是「新欄位不見了」
+
 ## 故障注入(營運層 Phase 3)
 
 用 mock provider 的失敗率驗證重試、熔斷與結構化拒答:
