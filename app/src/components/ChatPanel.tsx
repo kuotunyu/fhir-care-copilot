@@ -9,14 +9,16 @@ interface Props {
   patientName: string
 }
 
+const SUGGESTIONS = ['他目前有在吃什麼藥?', '最近的觀察值是什麼?', '目前有哪些生效中的診斷?']
+
 export function ChatPanel({ patientId, patientName }: Props) {
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLUListElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const submit = async () => {
-    const question = draft.trim()
-    if (!question) return
+  const submit = async (question: string) => {
+    if (!question.trim()) return
     const id = crypto.randomUUID()
     setTurns((prev) => [...prev, { id, question, response: null, pending: true, error: null }])
     setDraft('')
@@ -34,26 +36,56 @@ export function ChatPanel({ patientId, patientName }: Props) {
     }
   }
 
+  const applySuggestion = (text: string) => {
+    void submit(text)
+    textareaRef.current?.focus()
+  }
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      void submit()
+      void submit(draft)
     }
   }
 
   return (
     <section className="chat-panel" aria-label={`與 ${patientName} 相關的問答`}>
       <header className="chat-panel__header">
-        <h2>個案問答</h2>
+        <h2>
+          <span className="flow-step" aria-hidden="true">
+            3
+          </span>
+          個案問答
+        </h2>
         <p className="chart-panel__subline">
           只根據 {patientName} 的病歷資料回答,查無資料時會明確拒答,不會臆測
         </p>
       </header>
 
-      <ul className="chat-log" ref={listRef} aria-live="polite">
+      <ul
+        className={`chat-log${turns.length === 0 ? ' chat-log--empty' : ''}`}
+        ref={listRef}
+        aria-live="polite"
+      >
         {turns.length === 0 && (
-          <li className="chat-log__hint">
-            試著問:「他目前有在吃什麼藥?」「最近的觀察值是什麼?」
+          <li className="chat-log__empty">
+            <p className="chat-log__empty-title">想知道什麼,直接打字問</p>
+            <p className="chat-log__empty-hint">或點一句開始:</p>
+            <div className="chat-log__suggestions">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="suggestion-chip"
+                  onClick={() => applySuggestion(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <span className="chat-log__empty-arrow" aria-hidden="true">
+              問題輸入框在下面 ↓
+            </span>
           </li>
         )}
         {turns.map((t) => (
@@ -92,24 +124,42 @@ export function ChatPanel({ patientId, patientName }: Props) {
         className="chat-composer"
         onSubmit={(e) => {
           e.preventDefault()
-          void submit()
+          void submit(draft)
         }}
       >
-        <label className="sr-only" htmlFor="chat-input">
-          輸入問題
-        </label>
-        <textarea
-          id="chat-input"
-          rows={2}
-          placeholder="輸入問題,Enter 送出、Shift+Enter 換行…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <div className="chat-composer__field">
+          <label htmlFor="chat-input">輸入問題</label>
+          <textarea
+            id="chat-input"
+            ref={textareaRef}
+            rows={2}
+            placeholder="例如:他目前有在吃什麼藥?"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        </div>
         <button type="submit" className="btn btn--primary" disabled={!draft.trim()}>
           送出
         </button>
       </form>
+
+      {turns.length === 0 && (
+        <ul className="chat-trust-list">
+          <li>
+            <span className="chat-trust-list__icon chat-trust-list__icon--yes">✓</span>
+            每個回答都附可查證的病歷證據(FHIR 資源與欄位)
+          </li>
+          <li>
+            <span className="chat-trust-list__icon chat-trust-list__icon--yes">✓</span>
+            資料不足時會明確拒答,不會臆測或編造
+          </li>
+          <li>
+            <span className="chat-trust-list__icon chat-trust-list__icon--no">✕</span>
+            不提供醫療診斷、用藥或治療建議
+          </li>
+        </ul>
+      )}
     </section>
   )
 }
