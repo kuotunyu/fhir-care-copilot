@@ -25,7 +25,7 @@ uv run python scripts/generate_model_comparison.py \
     reports/eval_gemini.json reports/eval_openai.json
 ```
 
-## ⚠️ Gemini 免費層速率限制(實測發現,2026-07-24)
+## Gemini 免費層速率限制(實測發現,2026-07-24)
 
 `gemini-3.1-flash-lite` 免費層是 **15 requests/min**。每題至少 2 次 API 呼叫
 (工具呼叫 + 最終回答),沒有 pacing 幾乎一定會撞到 429。用 `--pace-seconds`:

@@ -1,6 +1,6 @@
 # FHIR Care Copilot
 
-> ⚠️ **這不是醫療診斷工具。** 本專案僅用於展示 healthcare interoperability 與 LLM agent 工程，
+> **注意：這不是醫療診斷工具。** 本專案僅用於展示 healthcare interoperability 與 LLM agent 工程，
 > 所有病患資料皆為 [Synthea](https://github.com/synthetichealth/synthea) 產生的**合成資料**，不含任何真實個資。
 
 以 Synthea 公開合成病患 FHIR R4 資料為基礎的**長照個案查詢 copilot**：可追溯、工具受控、預設唯讀。
