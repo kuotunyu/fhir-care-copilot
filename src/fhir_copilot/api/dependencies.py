@@ -30,6 +30,7 @@ from fhir_copilot.config import (
 )
 from fhir_copilot.ops import errors
 from fhir_copilot.ops.budget import DailyBudget
+from fhir_copilot.ops.circuit import CircuitBreaker
 from fhir_copilot.ops.config import OpsConfig, load_ops
 from fhir_copilot.ops.identity import (
     ANONYMOUS,
@@ -41,6 +42,7 @@ from fhir_copilot.ops.identity import (
 from fhir_copilot.ops.instrumented_provider import InstrumentedProvider
 from fhir_copilot.ops.metrics import Metrics
 from fhir_copilot.ops.ratelimit import TokenBucketLimiter
+from fhir_copilot.ops.resilience import ResilientProvider
 from fhir_copilot.providers.base import Provider
 from fhir_copilot.providers.factory import make_provider
 from fhir_copilot.store import LocalBundleFHIRStore
@@ -104,14 +106,63 @@ def get_metrics() -> Metrics:
 
 
 @lru_cache
+def get_circuit_breaker() -> CircuitBreaker:
+    config = get_ops().resilience
+    return CircuitBreaker(
+        failure_threshold=config.failure_threshold,
+        recovery_seconds=config.recovery_seconds,
+        half_open_successes=config.half_open_successes,
+    )
+
+
+def _model_id_for_pricing() -> str:
+    """算成本要用的 model id。直接讀設定,不要為了拿一個字串就新建 provider
+    ——那對 gemini/openai 等於重建一次 HTTP client。"""
+    providers, _default = load_providers()
+    return providers[get_provider_name()].model_id
+
+
+def _record_retry_cost() -> None:
+    """重試可能在 provider 端已經產生 token(例如生成到一半才逾時),我們觀測不到。
+
+    所以每次重試都用 ``configs/ops.yaml`` 的假設值向預算計數補記一筆——
+    **寧可高估,也不要讓一次請求偷偷花三倍錢**。
+    """
+    budget_config = get_ops().budget
+    estimated = estimate_cost_usd(
+        _model_id_for_pricing(),
+        budget_config.estimated_input_tokens_per_request,
+        budget_config.estimated_output_tokens_per_request,
+        get_pricing(),
+    )
+    get_budget().record(estimated)
+
+
+@lru_cache
 def get_provider() -> Provider:
-    """真正的 provider 外面包一層觀測。
+    """真正的 provider 外面包兩層:觀測,再包韌性。
 
     ``Provider`` 是 Protocol 且無狀態,所以 agent loop 分辨不出被包過——
-    provider 呼叫的 span 與錯誤計數因此不需要改 ``agent/loop.py``。
+    span、錯誤計數、重試與熔斷因此都不需要改 ``agent/loop.py``。
+
+    包裝順序是刻意的:韌性在**外**、觀測在**內**,所以每一次重試都會產生
+    自己的 provider span。反過來包的話 trace 上只看得到最後一次,重試就變成
+    看不見的成本。
     """
     name = get_provider_name()
-    return InstrumentedProvider(make_provider(name), get_metrics(), name)
+    resilience = get_ops().resilience
+    instrumented = InstrumentedProvider(
+        make_provider(name, timeout_seconds=resilience.provider_timeout_seconds),
+        get_metrics(),
+        name,
+    )
+    return ResilientProvider(
+        instrumented,
+        resilience,
+        get_circuit_breaker(),
+        on_retry=_record_retry_cost,
+        on_state_change=lambda state: get_metrics().circuit_state_changes.labels(state.value).inc(),
+    )
 
 
 # ---- 營運層(Phase 1:認證、限流、預算上限) ----
@@ -234,3 +285,4 @@ def reset_caches() -> None:
     get_rate_limiter.cache_clear()
     get_budget.cache_clear()
     get_metrics.cache_clear()
+    get_circuit_breaker.cache_clear()

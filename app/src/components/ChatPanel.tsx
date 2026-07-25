@@ -1,8 +1,22 @@
 import { useRef, useState } from 'react'
 import { api, describeApiError } from '../api'
-import type { ChatTurn } from '../types'
+import type { AgentResponse, ChatTurn } from '../types'
 import { EvidenceDrawer } from './EvidenceDrawer'
 import { StatusBadge } from './StatusBadge'
+
+/**
+ * 後端在 provider 重試後仍失敗、或熔斷開啟時,回的是這一句固定的 limitations
+ * (agent/loop.py 的 _REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE)。
+ *
+ * 這是刻意用文字比對而不是加一個新欄位:回應契約 AgentResponse 是這個專案的
+ * 公開介面之一,為了前端的一個標籤就改它不划算。四個 limitations 常數都是
+ * 固定字串,不含使用者輸入。
+ */
+const SERVICE_UNAVAILABLE_LIMITATION = 'AI 服務暫時無法回應,請稍後再試。'
+
+function isServiceUnavailable(response: AgentResponse): boolean {
+  return response.refused && response.limitations === SERVICE_UNAVAILABLE_LIMITATION
+}
 
 interface Props {
   patientId: string
@@ -106,7 +120,14 @@ export function ChatPanel({ patientId, patientName }: Props) {
               <div
                 className={`chat-bubble chat-bubble--answer${t.response.refused ? ' chat-bubble--refused' : ''}`}
               >
-                {t.response.refused && <span className="refusal-tag">拒答</span>}
+                {t.response.refused && (
+                  // 「服務暫時不可用」和「資料不足所以拒答」是兩件不同的事。
+                  // 都標成「拒答」的話,使用者會以為是自己的問題被回絕,而不是
+                  // 系統暫時壞掉——前者不會想再試,後者會。
+                  <span className="refusal-tag">
+                    {isServiceUnavailable(t.response) ? '服務暫時無法使用' : '拒答'}
+                  </span>
+                )}
                 <p className="chat-bubble__text">{t.response.answer}</p>
                 {t.response.limitations && (
                   <p className="chat-bubble__limitations">{t.response.limitations}</p>

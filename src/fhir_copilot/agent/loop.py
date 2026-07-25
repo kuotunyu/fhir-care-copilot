@@ -24,6 +24,7 @@ from pydantic import ValidationError
 
 from fhir_copilot.agent.response import AgentResponse
 from fhir_copilot.config import Guardrails, ModelPricing, estimate_cost_usd
+from fhir_copilot.ops.resilience import ProviderUnavailableError
 from fhir_copilot.ops.tracing import get_tracer
 from fhir_copilot.providers.base import Provider, ToolCallOutcome
 from fhir_copilot.store.base import FHIRStore
@@ -42,6 +43,7 @@ _REFUSAL_LIMITATION_INSUFFICIENT = "資料不足或查無此病患,無法回答�
 _REFUSAL_LIMITATION_TOO_LONG = "輸入長度超過系統上限。"
 _REFUSAL_LIMITATION_MAX_ROUNDS = "已達最大工具呼叫輪數上限,無法在限制內取得足夠資訊回答。"
 _REFUSAL_LIMITATION_TIMEOUT = "回答已超過系統時間限制。"
+_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE = "AI 服務暫時無法回應,請稍後再試。"
 
 
 def _elapsed_ms(start_time: float) -> int:
@@ -141,9 +143,19 @@ def answer_question(
             start_time=start_time,
         )
 
-    step = provider.start(
-        system_prompt=SYSTEM_PROMPT, user_message=question, tool_specs=list(READ_ONLY_TOOLS)
-    )
+    # provider 暫時壞掉是「已知的、預期內的」狀況,不是伺服器出錯——轉成結構化
+    # 拒答而不是讓例外冒到 HTTP 層變成 500。這是**新增**的拒答原因,既有的四個
+    # 護欄(輸入長度、tool rounds、loop 逾時、查無病患)一個都沒動。
+    try:
+        step = provider.start(
+            system_prompt=SYSTEM_PROMPT, user_message=question, tool_specs=list(READ_ONLY_TOOLS)
+        )
+    except ProviderUnavailableError:
+        return _refuse(
+            model_id=provider.model_id,
+            limitation=_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE,
+            start_time=start_time,
+        )
     total_input_tokens = step.input_tokens
     total_output_tokens = step.output_tokens
     all_evidence: list[Evidence] = []
@@ -184,7 +196,18 @@ def answer_question(
                 pricing=pricing,
             )
 
-        step = provider.continue_with_tool_results(step.state, outcomes)
+        try:
+            step = provider.continue_with_tool_results(step.state, outcomes)
+        except ProviderUnavailableError:
+            # 已經花掉的 token 照樣計費——重試也可能已經產生成本,不能當沒發生
+            return _refuse(
+                model_id=provider.model_id,
+                limitation=_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE,
+                start_time=start_time,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                pricing=pricing,
+            )
         total_input_tokens += step.input_tokens
         total_output_tokens += step.output_tokens
 
