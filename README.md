@@ -85,23 +85,26 @@ flowchart LR
 
 ## Eval 結果（真實 API 呼叫，非預估值）
 
-自動從 FHIR 結構產生 220 筆有 deterministic 標準答案的題目（不人工標註），涵蓋藥物/疾病/觀察值/照護計畫各 45 題、不可回答 20 題、prompt injection 20 題。以下是對 Gemini 與 OpenAI 各跑 30 題小樣本的真實結果（完整報告與逐字稿見 [reports/model_comparison.md](reports/model_comparison.md)、[MODEL_CARD.md](MODEL_CARD.md)）：
+自動從 FHIR 結構產生 220 筆有 deterministic 標準答案的題目（不人工標註），涵蓋藥物/疾病/觀察值/照護計畫各 45 題、不可回答 20 題、prompt injection 20 題。**以下是三個模型各跑完整 220 題的真實結果**（完整報告與逐字稿見 [reports/model_comparison_full.md](reports/model_comparison_full.md)、[MODEL_CARD.md](MODEL_CARD.md)）：
 
-| 指標 | Gemini `gemini-3.1-flash-lite` | OpenAI `gpt-5.4-mini` |
-|---|---|---|
-| Tool-selection accuracy | 100.0% | 100.0% |
-| Field exact match rate | 54.2%¹ | 54.2%¹ |
-| **Citation validity rate** | **100.0%** | **100.0%** |
-| Unsupported-claim rate | 0.0% | 0.0% |
-| Refusal accuracy | 100.0% | 100.0% |
-| Injection resistance rate | 100.0%² | 100.0%² |
-| p50 / p95 latency | 1342 / 1787 ms | 2404 / 5839 ms |
-| 平均成本／題 | $0.00048 | $0.00145 |
+| 指標 | Gemini `gemini-3.1-flash-lite`（預設） | OpenAI `gpt-5.4-mini` | OpenAI `gpt-5.4-nano` |
+|---|---|---|---|
+| Tool-selection accuracy | **100.0%** | 99.4% | 97.8% |
+| Field exact match rate | 43.3%¹ | 41.1%¹ | 42.8%¹ |
+| **Citation validity rate** | **100.0%** | **100.0%** | **100.0%** |
+| Unsupported-claim rate | **0.0%** | 0.6% | 2.2% |
+| Refusal accuracy | 100.0% | 100.0% | 100.0% |
+| **Injection resistance rate** | **100.0%**² | **100.0%** | 95.0%³ |
+| p50 / p95 latency | **1376 / 2005 ms** | 2627 / 5539 ms | 2695 / 5020 ms |
+| 平均成本／題 | $0.00053 | $0.00163 | **$0.00042** |
 
-¹ 人工核閱逐字稿確認並非答錯，而是模型把英文藥名/診斷翻譯成正體中文或改寫格式（如 `Prediabetes` → `糖尿病前期 (Prediabetes)`），嚴格子字串比對抓不到這類改寫，此指標低估真實品質。
-² 這個數字的判準**被真實資料打臉過三次**（見下方「換模型踩到的事」）。目前的版本與三種獨立視角的人工核閱在 **40 題上逐題完全一致**。
+¹ 人工核閱逐字稿確認並非答錯，而是模型把英文藥名/診斷翻譯成正體中文或改寫格式（如 `Prediabetes` → `糖尿病前期 (Prediabetes)`），嚴格子字串比對抓不到這類改寫，此指標低估真實品質。**注意：先前公布的 54.2% 出自 30 題小樣本，全量跑出來只有四成上下——小樣本高估了約 13 個百分點。**
 
-### 換模型踩到的事：最新不一定比較好
+² 這個判準**被真實資料打臉過五次**（假陽性四次、假陰性一次），詳見 [MODEL_CARD.md](MODEL_CARD.md)「已知限制」。目前的版本與三種獨立視角的人工核閱在 40 題上逐題完全一致。另外實測發現**同一個模型對同一道題，兩次執行可能給出不同回答**——單次執行的百分比不該當成模型的性質。
+
+³ `gpt-5.4-nano` 便宜 3.9 倍但在三個指標上都比 mini 差，而且那一次失守的方式值得注意：它拒絕了「開立處方」這個**動作**（說系統沒有這個功能），然後主動提出要給「可直接照開的處方建議（藥名、劑量、用法、療程）」，還自行判讀了腎功能。**拒絕形式，提供實質。** 三個獨立視角一致認定為真的失守。長照場景不建議用它換那 $0.0012。
+
+### 換模型踩到的事### 換模型踩到的事：最新不一定比較好
 
 2026-07-26 曾把預設模型換成當時剛出的 `gemini-3.5-flash-lite`，跑完 20 題 injection A/B 之後**退回 3.1**。完整表格：[reports/injection_ab.md](reports/injection_ab.md)。
 
@@ -167,7 +170,7 @@ $ uv run python scripts/verify_audit_chain.py
 | 軌 | 量什麼 | 用什麼 | 狀態 |
 |---|---|---|---|
 | **服務層 overhead** | FastAPI + 路由 + 工具執行 + FHIR store | mock provider＋固定 300 ms 延遲 | 已完成，見下 |
-| **端到端** | 含真實 LLM 供應商延遲與花費 | 真 provider，少量取樣 | **尚未執行**（見已知限制） |
+| **端到端** | 含真實 LLM 供應商延遲與花費 | 真 provider，各 30 次取樣 | 已完成，見 [reports/e2e_sample_gemini.md](reports/e2e_sample_gemini.md) |
 
 以下**全部屬於第一軌**，不含任何真實供應商的延遲。
 
@@ -251,8 +254,9 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 
 ## 已知限制（營運層）
 
-- **端到端那一軌還沒量**。真實 LLM 供應商的延遲與花費需要真的呼叫 API，
-  尚未執行；README 裡所有效能數字都屬於服務層那一軌
+- 兩軌數字**不可混用**：服務層那軌（mock + k6 併發）量的是控制項的每請求成本，
+  端到端那軌（真 provider、單一連線、固定間隔）量的是真實延遲量級。後者刻意不是
+  負載測試——真的 provider 有速率限制，併發拉高只會量到一整片 429
 - 限流、預算計數、熔斷器狀態都在**單一 process 的記憶體**裡（預算在資料庫模式下例外）。
   多實例部署時每個實例各算各的
 - 匿名呼叫者依來源 IP 分桶，IP 取自 `X-Forwarded-For`，**那個 header 可以偽造**。
@@ -271,13 +275,13 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 ## 成本
 
 - Eval 預算守門：預設 $5 上限，跑前依固定假設（2000 input + 300 output tokens/題）估算，超過直接擋下不花錢；執行中累計實際花費，超過提前停止但保留已完成結果
-- 本次 M6 小樣本比較（兩模型各 30 題）實際總花費：**$0.058**
+- 三個模型各跑完整 220 題的實際總花費：**$0.568**（Gemini $0.116、gpt-5.4-mini $0.360、gpt-5.4-nano $0.092）
 - 單價設定於 [`configs/pricing.yaml`](configs/pricing.yaml)，不寫死在程式；模型 id 對應於 [`configs/models.yaml`](configs/models.yaml)
 
 ## 已知限制（模型與資料）
 
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
-- 目前僅完成 220 題全量的 mock 版本 + 60 題（兩模型各 30）真實 API 小樣本比較，尚未跑完整 220 題的雙模型真實比較
+- 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
 - 「不可回答」題型目前只涵蓋「病患不存在」情境
 - 開發樣本為 Synthea 1K 樣本的 100 位子集，非完整資料集（詳見 [DATA_CARD.md](DATA_CARD.md)）
 - Practitioner/Organization 的參照解析已對真實資料驗證可行；`ExplanationOfBenefit` 內的 contained-resource 參照（`#` 開頭）目前無工具讀取，故無法解析

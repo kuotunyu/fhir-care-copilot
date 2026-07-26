@@ -29,3 +29,11 @@ models:
     input_per_1m_usd: 0.75
     output_per_1m_usd: 4.50
     cached_input_per_1m_usd: 0.075
+
+  gpt-5.4-nano:
+    # 已驗證(2026-07-26,官方定價頁)。比 mini 便宜約 3.6 倍,
+    # 加進來是為了做全量 eval 的第三欄對照——**不是預設**,
+    # models.yaml 沒有動,用 run_eval.py 的 --model-id 覆寫跑。
+    input_per_1m_usd: 0.20
+    output_per_1m_usd: 1.25
+    cached_input_per_1m_usd: 0.02

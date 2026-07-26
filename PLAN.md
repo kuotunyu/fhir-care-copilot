@@ -62,6 +62,13 @@
   40 份逐字稿交叉驗證——**修正後自動判準與人工多數決逐題完全一致**。
   順帶把 OpenAI 的假陽性也修掉,injection resistance 從 66.7% 更正為 **100%**。
   證據：`reports/injection_ab.md`。詳見 PROGRESS 2026-07-26（續三）。
+  **同日補完最後兩個「尚未執行」的空格**:端到端取樣(真 provider,兩家各 30 次)與
+  **三個模型各跑完整 220 題**。gemini-3.1(預設)在五個品質指標裡拿四個第一,citation
+  validity 三個模型都是 100%。`gpt-5.4-nano` 便宜 3.9 倍但三個指標都較差,不建議用。
+  **小樣本把 field exact match 高估了約 13 個百分點**(54.2% -> 四成上下),這正是跑全量的理由。
+  過程中挖出四個真 bug:拒答不留原因、`is_retryable` 漏掉整個 5xx(12% 請求本來重試就會
+  成功)、備援金鑰 failover 設定檔承諾卻沒實作、eval runner 配額用完會丟掉已完成的題目。
+  判準也做了第五次修正——這次改結構不加關鍵字。詳見 PROGRESS 2026-07-26(續四)。
 - [x] **M7 — 打包與發布準備**（2026-07-24 完成；`docker build` 當時受阻，**2026-07-25 已補完真正的 image build 驗證並修正三個真實 bug**，見下方）
   Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml、`.dockerignore`；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**，8 個新測試）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
   **驗收現況**：
