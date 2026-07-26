@@ -7,8 +7,25 @@
     # dry-run(預設,安全,不需要 token 也能跑)
     uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot
 
+    # 把「會上傳的那一份」實體攤到一個目錄,拿去 docker build 驗證(不碰 HF)
+    uv run python scripts/publish_to_hf.py --repo-id <username>/x --stage-dir /tmp/hf-stage
+
     # 真的發布(需要 HF_TOKEN,且需要明確 --execute)
     uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --execute
+
+## 為什麼有 --stage-dir
+
+dry-run 回答的是「**會上傳哪些檔案**」,不是「**那些檔案 build 得起來**」。這是兩個
+不同的宣稱,而本機 ``docker build`` 一直是在完整 repo 上跑的——那裡有 ``.git/``、
+``data/``、``app/node_modules/``,Space 上一個都沒有。用完整 repo 驗證 Space 的
+build,驗到的是另一條路徑。
+
+``--stage-dir`` 把 ``_simulate_upload()`` 算出來的那一份**實體複製**出來(README 也
+換成組好 front-matter 的版本),於是可以:
+
+    docker build -t fhir-care-copilot:hf <stage-dir>
+
+在花掉 HF 的 build 之前,先在本機證明它建得起來。
 
 依 PLAN.md §7 已查證的事實:
     - Space README 需要 front-matter(sdk: docker、app_port);見 assemble_readme()
@@ -24,9 +41,15 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import logging
+import os
 import re
+import shutil
 import sys
 from pathlib import Path
+
+import yaml
+
+from _env import load_env_file
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -63,8 +86,8 @@ SPACE_README_FRONT_MATTER = """\
 ---
 title: FHIR Care Copilot
 emoji: \U0001fa7a
-colorFrom: teal
-colorTo: orange
+colorFrom: blue
+colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false
@@ -72,6 +95,57 @@ license: apache-2.0
 ---
 
 """
+
+# **這組值不是查文件抄來的,是 HF 的 400 錯誤訊息逐字告訴我們的**(2026-07-26 實測):
+#   "colorFrom" must be one of [red, yellow, green, blue, indigo, purple, pink, gray]
+# 原本寫的是 teal/orange——兩個都不在清單上。PLAN.md §7 記了「front-matter 需要
+# colorFrom/colorTo」,但沒記**值域**,於是這個錯一路活到真的發布那一刻。
+HF_SPACE_COLORS = frozenset({"red", "yellow", "green", "blue", "indigo", "purple", "pink", "gray"})
+_REQUIRED_FRONT_MATTER_KEYS = ("title", "sdk", "app_port", "colorFrom", "colorTo")
+
+
+def front_matter_problems(front_matter: str) -> list[str]:
+    """在**碰 HF 之前**檢查 front-matter,回傳問題清單(空的代表沒問題)。
+
+    為什麼這件事非做不可:實測時 dry-run 一切正常,``--execute`` 卻在
+    ``upload_folder`` 把 **184 個檔案都傳完之後**才因為 README 的 metadata 被
+    ``/api/validate-yaml`` 打回 400。錯誤本身無害,但它暴露的是 dry-run 的職責
+    ——它宣稱「先讓你看會發生什麼」,卻漏檢了一個純本地、零成本就能檢的東西。
+
+    這裡刻意**只檢查本地檢查得到的**:值域、必要欄位、型別。HF 端還有什麼規則
+    我們不知道,不假裝知道。
+    """
+    problems: list[str] = []
+    body = front_matter.strip()
+    if not body.startswith("---"):
+        return ["front-matter 必須以 --- 開頭"]
+
+    _, _, rest = body.partition("---")
+    yaml_text, sep, _ = rest.partition("---")
+    if not sep:
+        return ["front-matter 缺少結尾的 ---"]
+
+    parsed = yaml.safe_load(yaml_text)
+    if not isinstance(parsed, dict):
+        return [f"front-matter 不是 YAML mapping:{type(parsed).__name__}"]
+
+    for key in _REQUIRED_FRONT_MATTER_KEYS:
+        if key not in parsed:
+            problems.append(f"缺少必要欄位 {key}")
+
+    for key in ("colorFrom", "colorTo"):
+        value = parsed.get(key)
+        if value is not None and value not in HF_SPACE_COLORS:
+            allowed = ", ".join(sorted(HF_SPACE_COLORS))
+            problems.append(f"{key}={value!r} 不在 HF 允許的顏色裡({allowed})")
+
+    if parsed.get("sdk") != "docker":
+        problems.append(f"sdk 必須是 docker,目前是 {parsed.get('sdk')!r}")
+    if not isinstance(parsed.get("app_port"), int):
+        problems.append(f"app_port 必須是整數,目前是 {parsed.get('app_port')!r}")
+
+    return problems
+
 
 logger = logging.getLogger("publish-to-hf")
 
@@ -113,6 +187,28 @@ def _broken_readme_links(uploaded: set[str], project_readme: Path) -> list[str]:
     return [link for link in links if link not in uploaded and (REPO_ROOT / link).exists()]
 
 
+def stage_upload(dest: Path, project_readme: Path) -> tuple[int, int]:
+    """把會上傳的檔案實體複製到 ``dest``,回傳 (檔案數, 總位元組)。
+
+    刻意**共用 ``_simulate_upload()``**,而不是另外寫一份複製規則——兩份規則遲早
+    分岔,到時候「驗過的那一份」就不是「上傳的那一份」了。
+
+    ``dest`` 必須不存在或為空目錄:這支腳本不該有機會覆寫使用者既有的東西。
+    """
+    if dest.exists() and any(dest.iterdir()):
+        raise ValueError(f"--stage-dir 指向的目錄不是空的,拒絕覆寫:{dest}")
+
+    kept, total = _simulate_upload()
+    for rel, _size in kept:
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / rel, target)
+
+    # 與 _execute_publish 一致:README 換成組好 front-matter 的那一份。
+    (dest / "README.md").write_text(assemble_space_readme(project_readme), encoding="utf-8")
+    return len(kept), total
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -136,7 +232,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         metavar="NAME=VALUE",
         help="發布後同時設定一個 Space Secret(可重複使用此旗標)。"
-        "只在 --execute 時生效;dry-run 只會印出會設定哪些 secret 名稱(不印值)。",
+        "只在 --execute 時生效;dry-run 只會印出會設定哪些 secret 名稱(不印值)。"
+        "**金鑰請改用 --set-secret-from-env**,值寫在命令列會留在 shell 歷史裡。",
+    )
+    parser.add_argument(
+        "--set-secret-from-env",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="從環境變數讀值來設定同名的 Space Secret(可重複)。"
+        "與 --set-secret 的差別只有一個,但很重要:**值不會出現在命令列**"
+        "——不進 shell 歷史、不進 ps 的輸出。設定真的 API 金鑰時用這個。",
+    )
+    parser.add_argument(
+        "--stage-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="把會上傳的檔案實體複製到這個目錄後結束(不呼叫任何 HF API)。"
+        "用途是拿去 `docker build` 驗證 Space 的 build——完整 repo 建得起來"
+        "不代表少了 .git/、data/ 的那一份建得起來。目錄必須不存在或為空。",
+    )
+    parser.add_argument(
+        "--load-env",
+        action="store_true",
+        help="先把專案根目錄的 .env 讀進環境變數(HF_TOKEN 與各 provider 金鑰都在那裡)。"
+        "已經在環境裡的值優先,不會被檔案蓋掉。",
     )
     return parser.parse_args(argv)
 
@@ -153,10 +274,21 @@ def _parse_secret_arg(raw: str) -> tuple[str, str]:
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args(argv)
+    if args.load_env:
+        load_env_file(REPO_ROOT / ".env")
 
     project_readme = REPO_ROOT / "README.md"
     if not project_readme.exists():
         logger.error("找不到 %s,無法組合 Space README", project_readme)
+        return 1
+
+    # **在任何上傳之前。** 實測的教訓:metadata 錯誤是在 184 個檔案上傳完之後
+    # 才由 HF 端擋下來的,結果是一個半完成的 Space。純本地檢查就先擋掉。
+    problems = front_matter_problems(SPACE_README_FRONT_MATTER)
+    if problems:
+        logger.error("Space README front-matter 有問題,發布前先修掉:")
+        for problem in problems:
+            logger.error("  - %s", problem)
         return 1
 
     secrets: dict[str, str] = {}
@@ -166,6 +298,16 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             logger.error("%s", exc)
             return 1
+        secrets[name] = value
+    for name in args.set_secret_from_env:
+        value = os.environ.get(name, "")
+        if not value:
+            # 只在真的要發布時才是致命的——dry-run 應該在沒有任何金鑰的機器上跑得完。
+            level = logger.error if args.execute else logger.warning
+            level("--set-secret-from-env %s:環境變數未設定或為空", name)
+            if args.execute:
+                return 1
+            continue
         secrets[name] = value
 
     logger.info("repo_id:       %s", args.repo_id)
@@ -191,6 +333,19 @@ def main(argv: list[str] | None = None) -> int:
     if secrets:
         logger.info("secrets to set(僅列名稱,不印值): %s", ", ".join(sorted(secrets)))
 
+    if args.stage_dir is not None:
+        try:
+            count, staged_total = stage_upload(args.stage_dir, project_readme)
+        except ValueError as exc:
+            logger.error("%s", exc)
+            return 1
+        logger.info(
+            "已攤開 %d 個檔案(%.1f MB)到 %s", count, staged_total / 1024 / 1024, args.stage_dir
+        )
+        logger.info("下一步:docker build -t fhir-care-copilot:hf %s", args.stage_dir)
+        logger.info("=== 只攤開檔案,未呼叫任何 HF API ===")
+        return 0
+
     if not args.execute:
         logger.info("=== DRY RUN(預設模式,未呼叫任何 HF API、未上傳任何檔案)===")
         logger.info("加 --execute 才會真的發布;真的發布需要 HF_TOKEN 環境變數。")
@@ -202,7 +357,6 @@ def main(argv: list[str] | None = None) -> int:
 def _execute_publish(
     repo_id: str, private: bool, secrets: dict[str, str], project_readme: Path
 ) -> int:
-    import os
     import tempfile
 
     token = os.environ.get("HF_TOKEN")
@@ -223,6 +377,20 @@ def _execute_publish(
         exist_ok=True,
     )
 
+    # **secret 必須在上傳之前設好,順序不能顛倒。**
+    #
+    # 上傳內容會讓 HF 立刻開始 build,build 完成的容器帶著的是「當下存在的」
+    # 環境變數。原本的順序是先上傳、後設 secret,於是第一個跑起來的容器永遠
+    # 拿不到金鑰——而 resolve_provider_name() 沒金鑰就退回 mock,get_provider_name()
+    # 又是 @lru_cache,一旦解析成 mock 就固定到 process 結束。
+    #
+    # 結果是:全新部署**必然**跑成 mock demo mode,而且網頁看起來完全正常。
+    # 2026-07-26 首次部署實測就是這樣,/api/health 回 provider=mock,
+    # budget_counting_since 顯示容器早於 secret 設定時間。
+    for name, value in secrets.items():
+        logger.info("設定 Space secret:%s", name)
+        api.add_space_secret(repo_id, name, value)
+
     with tempfile.TemporaryDirectory() as tmp:
         space_readme = Path(tmp) / "README.md"
         space_readme.write_text(assemble_space_readme(project_readme), encoding="utf-8")
@@ -241,11 +409,16 @@ def _execute_publish(
             path_in_repo="README.md",
         )
 
-    for name, value in secrets.items():
-        logger.info("設定 Space secret:%s", name)
-        api.add_space_secret(repo_id, name, value)
+    if secrets:
+        # 上面的順序修好了「全新部署」。但**重跑**時 Space 可能正跑著一個舊容器,
+        # 而內容沒變就不會觸發 build——那它會繼續用舊環境。明確重啟一次,
+        # 讓「指令跑完 = 新設定生效」成立,不必人工去點。
+        logger.info("重啟 Space,讓新的 secret 生效...")
+        api.restart_space(repo_id)
 
     logger.info("完成。Space 網址:https://huggingface.co/spaces/%s", repo_id)
+    logger.info("健康檢查:https://%s.hf.space/api/health", repo_id.replace("/", "-"))
+    logger.info("**部署後務必確認 provider 不是 mock**——沒拿到金鑰時它會安靜退回去。")
     return 0
 
 
