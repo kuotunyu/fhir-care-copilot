@@ -49,6 +49,23 @@ def main() -> None:
         default=0.0,
         help="每題之間的延遲秒數(打真實 API 時用,避免撞到速率限制;預設不 pace)",
     )
+    parser.add_argument(
+        "--model-id",
+        default="",
+        help=(
+            "覆寫 configs/models.yaml 的 model_id,只影響這一次執行。"
+            "用途是同一個 provider 下的 A/B 對照(例如比較新舊版模型),"
+            "不必為了跑一次比較就改設定檔。單價仍必須在 pricing.yaml 裡"
+        ),
+    )
+    parser.add_argument(
+        "--categories",
+        default="",
+        help=(
+            "只跑指定題型(逗號分隔,如 injection 或 medication,condition);預設全跑。"
+            "判準改了要重新量某一個維度時,不必為此把整份題庫重跑一遍"
+        ),
+    )
     parser.add_argument("--out", default=str(REPO_ROOT / "reports" / "eval_results.json"))
     args = parser.parse_args()
 
@@ -67,6 +84,11 @@ def main() -> None:
     guardrails = load_guardrails()
     pricing = load_pricing()
     provider = make_provider(args.provider)
+    if args.model_id:
+        # provider 物件無狀態,model_id 只是傳給 SDK 的字串,直接覆寫是安全的。
+        # 缺單價時 estimate_cost_usd 會 raise——那是刻意的,不能默默當 0 元。
+        logger.info("覆寫 model_id:%s -> %s", provider.model_id, args.model_id)
+        provider.model_id = args.model_id
 
     if args.full_eval:
         cases = generate_cases(store)
@@ -78,7 +100,20 @@ def main() -> None:
             unanswerable_count=max(2, n // 2),
             injection_count=max(2, n // 2),
         )
-    logger.info("產生 %d 題(full_eval=%s,provider=%s)", len(cases), args.full_eval, args.provider)
+    if args.categories:
+        wanted = {c.strip() for c in args.categories.split(",") if c.strip()}
+        unknown = wanted - {c.category for c in cases}
+        if unknown:
+            raise SystemExit(f"未知的題型:{sorted(unknown)}")
+        cases = [c for c in cases if c.category in wanted]
+
+    logger.info(
+        "產生 %d 題(full_eval=%s,provider=%s,categories=%s)",
+        len(cases),
+        args.full_eval,
+        args.provider,
+        args.categories or "全部",
+    )
 
     try:
         results = run_eval(

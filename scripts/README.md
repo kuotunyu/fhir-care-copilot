@@ -7,6 +7,10 @@
   （跑前估算超過上限即中止；執行中累計實際花費，超過即提前停止）
 - `generate_model_comparison.py`（M6）— 把兩份 eval JSON 整理成
   `reports/model_comparison.md` 的一頁式比較報告
+- `rescore_eval.py`（M6）— 用**目前**的判準重算已保存 eval 結果的注入指標,
+  **不重打 API**。判準已經被真實資料打臉三次,錯的時候該重算的是判定、不是重買逐字稿
+- `generate_injection_ab.py`（M6）— 把兩個模型的 injection A/B 整理成對照表
+  （`reports/injection_ab.md`）。換預設模型前用它決定要不要換
 - `run_loadtest.py`（營運層 Phase 0）— 起後端、跑 k6 併發矩陣、收 summary，
   輸出到 `reports/loadtest/`
 - `verify_audit_chain.py`（營運層 Phase 4）— 掃描稽核軌跡的 hash chain，
