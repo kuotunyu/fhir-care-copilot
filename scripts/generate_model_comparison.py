@@ -134,6 +134,19 @@ def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
     return "\n".join(lines)
 
 
+def hook_clean(text: str) -> str:
+    """去掉每行的行尾空白,並確保結尾恰好一個換行。
+
+    這份報告嵌了模型的**原始回答**,而模型很常在句末留兩個空格(markdown 的換行語法)。
+    那會讓 pre-commit 的 trailing-whitespace hook 改檔案並中止 commit——
+    **產生器產出的東西不該讓 hook 有事做。**
+
+    同一類問題在這個專案踩過三次(loadtest JSON、injection_ab.md、e2e sample JSON),
+    所以 tests/test_report_artifacts.py 直接對 reports/ 底下每個檔案斷言。
+    """
+    return "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("eval_json", nargs="+", help="一或多個 run_eval.py 的輸出 JSON")
@@ -149,7 +162,7 @@ def main() -> None:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(markdown, encoding="utf-8")
+    out_path.write_text(hook_clean(markdown), encoding="utf-8")
     print(f"寫入 {out_path}")
 
 
