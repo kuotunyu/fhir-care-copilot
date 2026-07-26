@@ -22,16 +22,20 @@ calling,agent loop 自己驅動多輪迴圈(ADR 0001/0003)。provider instance �
 
 from __future__ import annotations
 
+import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from google import genai
 from google.genai import types
 
 from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.tools.registry import ToolSpec, llm_facing_schema
+
+logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -104,12 +108,21 @@ class GeminiProvider:
         *,
         model_id: str = _DEFAULT_MODEL_ID,
         api_key: str | None = None,
+        backup_api_keys: Sequence[str] = (),
         timeout_seconds: float | None = None,
     ) -> None:
         self.model_id = model_id
         key = api_key or os.environ.get("GEMINI_API_KEY")
         if not key:
             raise RuntimeError("GEMINI_API_KEY 未設定,無法建立 GeminiProvider")
+        # 備援金鑰:主金鑰的**每日配額**用完時換下一把。
+        #
+        # 這和 ResilientProvider 的重試是兩件事,不能互相取代:429 RESOURCE_EXHAUSTED
+        # 說「58 秒後再試」,而退避上限是 4 秒——重試幾次都一樣。**配額耗盡要換身分,
+        # 不是等。** 實測發現配額是 per project,所以同一個專案的備援金鑰會一起用完;
+        # 只有不同專案的那把救得了。
+        self._keys = [key, *(k for k in backup_api_keys if k)]
+        self._key_index = 0
         # 單次呼叫逾時下在 SDK 的 HTTP client:那是真的中止請求。在外層用執行緒
         # 包 timeout 只能「不等它」,底層連線還在跑、執行緒也殺不掉,等於把逾時
         # 變成 threadpool 洩漏(而 threadpool 飽和正是 Phase 0 量到的瓶頸)。
@@ -119,7 +132,30 @@ class GeminiProvider:
             if timeout_seconds is not None
             else None
         )
-        self._client = genai.Client(api_key=key, http_options=http_options)
+        self._http_options = http_options
+        self._client = genai.Client(api_key=self._keys[0], http_options=http_options)
+
+    def _quota_exhausted(self, exc: BaseException) -> bool:
+        text = str(exc)
+        return "RESOURCE_EXHAUSTED" in text or "exceeded your current quota" in text
+
+    def _with_key_failover(self, operation: Callable[[], _T]) -> _T:
+        """配額用完就換下一把金鑰重來,換完還是不行才把例外丟出去。"""
+        while True:
+            try:
+                return operation()
+            except Exception as exc:
+                if not self._quota_exhausted(exc) or self._key_index + 1 >= len(self._keys):
+                    raise
+                self._key_index += 1
+                # **只記索引,永遠不記金鑰本身。**
+                logger.warning(
+                    "Gemini 配額用完,切換備援金鑰",
+                    extra={"key_index": self._key_index, "key_count": len(self._keys)},
+                )
+                self._client = genai.Client(
+                    api_key=self._keys[self._key_index], http_options=self._http_options
+                )
 
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]
@@ -131,8 +167,10 @@ class GeminiProvider:
             tools=[_build_tool(specs)],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        response = self._client.models.generate_content(
-            model=self.model_id, contents=[user_content], config=config
+        response = self._with_key_failover(
+            lambda: self._client.models.generate_content(
+                model=self.model_id, contents=[user_content], config=config
+            )
         )
         return _extract_step(response, [user_content], specs)
 
@@ -155,7 +193,9 @@ class GeminiProvider:
             tools=[_build_tool(state.tool_specs)],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        response = self._client.models.generate_content(
-            model=self.model_id, contents=history, config=config
+        response = self._with_key_failover(
+            lambda: self._client.models.generate_content(
+                model=self.model_id, contents=history, config=config
+            )
         )
         return _extract_step(response, history, state.tool_specs)

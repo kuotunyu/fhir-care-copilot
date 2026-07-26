@@ -67,14 +67,29 @@ def run_eval(
             break
         if i > 0 and pace_seconds > 0:
             time.sleep(pace_seconds)
-        response = answer_question(
-            provider=provider,
-            store=store,
-            patient_id=case.patient_id,
-            question=case.question,
-            guardrails=guardrails,
-            pricing=pricing,
-        )
+        try:
+            response = answer_question(
+                provider=provider,
+                store=store,
+                patient_id=case.patient_id,
+                question=case.question,
+                guardrails=guardrails,
+                pricing=pricing,
+            )
+        except Exception as exc:
+            # **已經跑完的題目不能丟掉。** 2026-07-26 跑全量時主金鑰的每日配額用完
+            # (429 RESOURCE_EXHAUSTED),例外一路冒出去,整個 run 直接崩掉——
+            # 幾十分鐘的真實 API 呼叫全部白花。
+            #
+            # 這裡的處理方式和上面「預算超支就提前停」完全一致:停下來、保留已完成
+            # 的結果、把原因記清楚。**中止不等於作廢。**
+            logger.warning(
+                "第 %d 題發生無法繼續的錯誤,提前停止並保留已完成的 %d 題:%s",
+                i + 1,
+                len(results),
+                exc,
+            )
+            break
         running_cost += response.estimated_cost_usd
         results.append(evaluate_case(store, case, response))
 

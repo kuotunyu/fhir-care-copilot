@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fhir_copilot.config import load_providers
 from fhir_copilot.providers.base import Provider
 from fhir_copilot.providers.gemini import GeminiProvider
@@ -24,7 +26,17 @@ def make_provider(name: str | None = None, *, timeout_seconds: float | None = No
     if resolved == "mock":
         return MockProvider(model_id=model_id)
     if resolved == "gemini":
-        return GeminiProvider(model_id=model_id, timeout_seconds=timeout_seconds)
+        # models.yaml 的 backup_api_key_envs 一直定義著卻沒人讀——2026-07-26 跑全量
+        # eval 時主金鑰的每日配額(免費層 500 req/day/model)用完,整個 run 直接掛掉,
+        # 才發現這個缺口。**設定檔承諾的東西沒實作,比沒承諾更糟。**
+        backups = [
+            value
+            for env_name in providers[resolved].backup_api_key_envs
+            if (value := os.environ.get(env_name))
+        ]
+        return GeminiProvider(
+            model_id=model_id, backup_api_keys=backups, timeout_seconds=timeout_seconds
+        )
     if resolved == "openai":
         return OpenAIProvider(model_id=model_id, timeout_seconds=timeout_seconds)
     raise KeyError(f"未知的 provider 名稱:'{resolved}'(models.yaml 有定義,但沒有對應實作)")

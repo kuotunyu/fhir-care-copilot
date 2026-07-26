@@ -11,6 +11,7 @@ from fhir_copilot.eval.runner import BudgetExceededError, estimate_total_cost_us
 from fhir_copilot.providers.base import ProviderStep
 from fhir_copilot.providers.mock import MockProvider
 from fhir_copilot.store import LocalBundleFHIRStore
+from fhir_copilot.tools.registry import ToolSpec
 
 
 @pytest.fixture
@@ -132,3 +133,41 @@ def test_run_eval_stops_early_when_running_cost_exceeds_budget(
     )
 
     assert 0 < len(results) < len(cases)
+
+
+def test_unrecoverable_provider_error_keeps_completed_cases(
+    store: LocalBundleFHIRStore, guardrails: Guardrails
+) -> None:
+    """跑到一半 provider 掛掉時,已完成的題目**不能丟掉**。
+
+    2026-07-26 跑全量 eval 時主金鑰的每日配額用完(429 RESOURCE_EXHAUSTED),
+    例外一路冒出去把整個 run 弄崩,幾十分鐘的真實 API 呼叫全部白花。
+    處理方式比照既有的「預算超支就提前停」:停下來、保留結果、記清楚原因。
+    """
+
+    class DiesOnThirdCall(MockProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def start(
+            self, *, system_prompt: str, user_message: str, tool_specs: Sequence[ToolSpec]
+        ) -> ProviderStep:
+            self.calls += 1
+            if self.calls > 2:
+                raise RuntimeError("429 RESOURCE_EXHAUSTED. quota exceeded")
+            return super().start(
+                system_prompt=system_prompt, user_message=user_message, tool_specs=tool_specs
+            )
+
+    cases = generate_cases(store, per_category=2, unanswerable_count=2, injection_count=2)[:5]
+    results = run_eval(
+        cases=cases,
+        provider=DiesOnThirdCall(),
+        store=store,
+        guardrails=guardrails,
+        pricing=load_pricing(),
+        budget_usd=5.0,
+    )
+
+    assert 0 < len(results) < len(cases), "應該保留已完成的題目,而不是全丟或全跑完"

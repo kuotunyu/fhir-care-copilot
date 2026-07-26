@@ -100,3 +100,105 @@ def test_every_content_role_is_legal_across_a_full_round(provider: GeminiProvide
     assert len(sent) == 2
     for content in sent:
         assert content.role.upper() in LEGAL_ROLES, f"不合法的 role={content.role!r}"
+
+
+class TestQuotaFailover:
+    """主金鑰的**每日配額**用完時換備援金鑰。
+
+    2026-07-26 跑全量 eval 時真的撞到:免費層 500 req/day/model,主金鑰用完,
+    整個 run 直接掛掉。``models.yaml`` 一直定義著 ``backup_api_key_envs``,
+    但沒有任何程式讀它——**設定檔承諾的東西沒實作,比沒承諾更糟**。
+
+    這和 ResilientProvider 的重試是兩件事:429 說「58 秒後再試」,而退避上限
+    是 4 秒,重試幾次都一樣。**配額耗盡要換身分,不是等。**
+    """
+
+    @staticmethod
+    def _patch_clients(monkeypatch: pytest.MonkeyPatch, exhausted: set[str]) -> list[str]:
+        """攔下 genai.Client,讓「哪些金鑰配額用完」可以被腳本控制。
+
+        換金鑰會**重建 client**,所以不能只把假 client 掛在 provider 上——
+        那樣第二把金鑰會拿去打真的 API(第一版測試就是這樣才爆的)。
+        """
+        used: list[str] = []
+
+        def fake_client(*, api_key: str, http_options: Any = None) -> Any:
+            used.append(api_key)
+            client = FakeClient()
+
+            def generate_content(*, model: str, contents: Any, config: Any) -> Any:
+                if api_key in exhausted:
+                    raise RuntimeError(
+                        "429 RESOURCE_EXHAUSTED. {'error': {'message': 'You exceeded "
+                        "your current quota', 'status': 'RESOURCE_EXHAUSTED'}}"
+                    )
+                return _FakeResponse()
+
+            client.models.generate_content = generate_content  # type: ignore[method-assign]
+            return client
+
+        monkeypatch.setattr("fhir_copilot.providers.gemini.genai.Client", fake_client)
+        return used
+
+    def test_switches_to_backup_when_quota_is_exhausted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        used = self._patch_clients(monkeypatch, exhausted={"primary"})
+        provider = GeminiProvider(
+            model_id="gemini-3.1-flash-lite", api_key="primary", backup_api_keys=["backup-1"]
+        )
+
+        step = provider.start(system_prompt="s", user_message="q", tool_specs=())
+
+        assert step.final_answer == "假的最終回答"
+        assert used == ["primary", "backup-1"], "配額用完必須換到備援金鑰"
+
+    def test_skips_past_several_exhausted_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """實測發現配額是 per project——同一專案的幾把金鑰會一起用完,
+        只有不同專案的那把救得了。所以要能連續換過好幾把。"""
+        used = self._patch_clients(monkeypatch, exhausted={"primary", "b1", "b2"})
+        provider = GeminiProvider(
+            model_id="gemini-3.1-flash-lite",
+            api_key="primary",
+            backup_api_keys=["b1", "b2", "b3"],
+        )
+
+        provider.start(system_prompt="s", user_message="q", tool_specs=())
+
+        assert used == ["primary", "b1", "b2", "b3"]
+
+    def test_gives_up_when_every_key_is_exhausted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """對照組:全部用完就把例外丟出去,不要無限迴圈。"""
+        self._patch_clients(monkeypatch, exhausted={"primary", "backup-1"})
+        provider = GeminiProvider(
+            model_id="gemini-3.1-flash-lite", api_key="primary", backup_api_keys=["backup-1"]
+        )
+
+        with pytest.raises(RuntimeError, match="RESOURCE_EXHAUSTED"):
+            provider.start(system_prompt="s", user_message="q", tool_specs=())
+
+    def test_non_quota_errors_do_not_burn_backup_keys(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """對照組:400 是我們自己送錯,換金鑰沒有意義,不該浪費備援配額。"""
+        used: list[str] = []
+
+        def fake_client(*, api_key: str, http_options: Any = None) -> Any:
+            used.append(api_key)
+            client = FakeClient()
+
+            def generate_content(*, model: str, contents: Any, config: Any) -> Any:
+                raise RuntimeError("400 INVALID_ARGUMENT")
+
+            client.models.generate_content = generate_content  # type: ignore[method-assign]
+            return client
+
+        monkeypatch.setattr("fhir_copilot.providers.gemini.genai.Client", fake_client)
+        provider = GeminiProvider(
+            model_id="gemini-3.1-flash-lite", api_key="primary", backup_api_keys=["backup-1"]
+        )
+
+        with pytest.raises(RuntimeError, match="400"):
+            provider.start(system_prompt="s", user_message="q", tool_specs=())
+
+        assert used == ["primary"], "非配額錯誤不該換金鑰"
