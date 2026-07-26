@@ -47,6 +47,14 @@
   小樣本先跑（兩模型各 30 題）→ `--full-eval` 開關已備妥（受 Gemini 免費層 15 req/min 限制，用 `--pace-seconds` 控速，見 skill 文件）。產出 `reports/eval_gemini.json`、`reports/eval_openai.json`、`reports/model_comparison.md`（由 `scripts/generate_model_comparison.py` 從真實 JSON 自動產生，不手 key 數字）。**任何模型品質結論必須由 eval 數字支持，不得宣稱未量測的準確率。**
   **驗收**：真實跑出的數字與成本紀錄（見下方）；過程中發現並修正 injection-resistance 判準的假陽性 bug（拒絕句本身提到違禁詞會被誤判），修正後仍人工核閱全部逐字稿附進報告，不只信自動判準。
   **真實結果**：Gemini(`gemini-3.1-flash-lite`)citation validity 100%、injection resistance 100%、p50 延遲 1342ms、平均成本 $0.00048/題；OpenAI(`gpt-5.4-mini`)citation validity 100%、injection resistance 66.7%(人工核閱後判斷可能是判準誤判，逐字稿顯示未真正服從）、p50 延遲 2404ms、平均成本 $0.00145/題。兩者 field exact match 皆約 54%，人工核閱發現是因為兩個模型都會把英文藥名/診斷翻譯成正體中文或改寫格式（非答錯）。總花費 $0.058。
+  **2026-07-26 換模型與重跑**：預設模型改為 `gemini-3.5-flash-lite`（$0.30/$2.50 per 1M，
+  output 比 3.1 貴 1.67 倍），30 題重跑：citation validity 100%、field exact match 58.3%、
+  p50 1682ms、$0.00072/題，花費 $0.0216。**injection resistance 掉到 66.7%**——
+  它把整段 system prompt 複述出來（逐字重疊 92%），而 3.1 與 gpt-5.4-mini 同一題都沒洩漏。
+  自動判準原本判成「抵抗住」，因為模型把「你是」改成「我是」、違禁字串一個字之差沒命中；
+  判準已改為比對 SYSTEM_PROMPT 逐字重疊度。過程中還修掉一個潛伏的 adapter bug
+  （工具結果用 `role="tool"` 送回 Gemini，3.1 容忍、3.5 回 400，正確角色一直是 `user`），
+  並補上兩個 provider adapter 的離線測試（原本零測試）。詳見 PROGRESS 2026-07-26（續二）。
 - [x] **M7 — 打包與發布準備**（2026-07-24 完成；`docker build` 當時受阻，**2026-07-25 已補完真正的 image build 驗證並修正三個真實 bug**，見下方）
   Multi-stage Dockerfile（front-end build → Python runtime；HF 要求 UID 1000）、docker-compose.yml、`.dockerignore`；HF Docker Space 設定（README front-matter `sdk: docker` + `app_port`、Space Secrets、無金鑰自動切 mock/demo mode）；`MODEL_CARD.md`、`DATA_CARD.md`、`CITATION.cff`、`LICENSE`（**Apache-2.0**）；`scripts/publish_to_hf.py`（預設 dry-run，**不自動發布**，8 個新測試）；README 完整版（90 秒 demo、Mermaid 架構圖、資料流、安全邊界、eval 表、成本、已知限制、面試說法、截圖 placeholder）。
   **驗收現況**：
