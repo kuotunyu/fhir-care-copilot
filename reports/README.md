@@ -15,6 +15,11 @@
   `with-observability`、`final`)各一次獨立量測,`comparison.md` 是由
   `scripts/compare_loadtests.py` 從那四份 JSON 產生的對照表;
   `fault-injection-*.md` 是五個故障場景的結果
+- `eval_gemini_full.json` / `eval_openai_full.json` / `eval_openai_nano_full.json`（M6）—
+  三個模型各跑**完整 220 題**的結果;`model_comparison_full.md` 是三欄對照表
+- `e2e_sample_<provider>.{json,md}`（M6/營運層 Phase 5）— 端到端取樣:含真實供應商延遲的
+  完整 HTTP 往返。**與 `loadtest/` 那一軌不可混用**——那邊量控制項的每請求成本
+  (mock + k6 併發),這邊量真實延遲量級(真 provider、單一連線、固定間隔)
 - `injection_ab.md` + `injection_ab_<model>.json`（M6）— 兩個 Gemini 版本在**同一組
   20 題**注入案例上的直接對照(5 種手法,搭配 4 位病患)。存在的理由:30 題小樣本裡
   injection 只有 3 題,單題翻轉就是 33 個百分點,不足以決定換不換預設模型。

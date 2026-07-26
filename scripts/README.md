@@ -11,6 +11,9 @@
   **不重打 API**。判準已經被真實資料打臉三次,錯的時候該重算的是判定、不是重買逐字稿
 - `generate_injection_ab.py`（M6）— 把兩個模型的 injection A/B 整理成對照表
   （`reports/injection_ab.md`）。換預設模型前用它決定要不要換
+- `run_e2e_sample.py`（M6/營運層 Phase 5）— **第二軌**:打真的供應商,量含供應商延遲的
+  完整 HTTP 往返。刻意**不是**負載測試——真 provider 有速率限制,併發拉高只會量到
+  一整片 429。走單一連線、固定間隔、少量取樣
 - `run_loadtest.py`（營運層 Phase 0）— 起後端、跑 k6 併發矩陣、收 summary，
   輸出到 `reports/loadtest/`
 - `verify_audit_chain.py`（營運層 Phase 4）— 掃描稽核軌跡的 hash chain，
