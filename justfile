@@ -101,6 +101,17 @@ frontend-dev:
 frontend-build:
     npm --prefix app run build
 
+# 前端單元測試(vitest + @testing-library/react)
+frontend-test:
+    npm --prefix app run test
+
+# 前端全套:lint + 單元測試 + build(build 含 tsc -b 的型別檢查)
+# 刻意**不掛進 `just check`**——後端的 check 要能在沒裝 node_modules 的機器上跑完,
+# 而且它是 pre-commit 會用到的路徑。前端要驗就明確跑這一條,CI 兩邊都跑。
+frontend-check: frontend-test
+    npm --prefix app run lint
+    npm --prefix app run build
+
 # 後端開發伺服器(port 8000;先跑過一次 frontend-build 的話會一併 serve 前端)
 backend-dev:
     uv run uvicorn fhir_copilot.api.app:app --reload --port 8000

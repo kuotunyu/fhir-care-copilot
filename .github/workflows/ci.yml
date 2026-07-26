@@ -106,9 +106,14 @@ jobs:
     # 所以型別錯誤其實會被 docker job 抓到,只是要等整個 image 建完、
     # 而且錯誤訊息埋在 build log 深處。獨立成一個 job 才會第一時間指出是前端壞了。
     #
-    # 沒有前端單元測試,所以這裡跑的是「編得起來、lint 過」——`npm run build`
-    # 是 `tsc -b && vite build`,型別檢查包含在內。誠實記錄:這**不是**測試,
-    # 是編譯與靜態檢查。
+    # 2026-07-26 補上單元測試(vitest + @testing-library/react,35 個)。
+    # 誠實記錄涵蓋到哪:
+    #   - api.ts 的金鑰注入與錯誤翻譯(唯一的注入點,6 個呼叫都走它)
+    #   - StatusBar 的降級揭露(demo mode 與真實模式的文案互斥)
+    #   - ChatPanel 的錯誤訊息與送出行為
+    # **沒有涵蓋**:PatientSelector / PatientTimeline / EvidenceDrawer 的渲染,
+    # 以及任何版面行為(自動捲動在 jsdom 裡是 stub 掉的)。
+    # 測試檔放在 src/ 底下,所以 `tsc -b` 會一併型別檢查它們;正式 bundle 不受影響。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +130,9 @@ jobs:
 
       - name: Lint (oxlint)
         run: npm run --prefix app lint
+
+      - name: Unit tests (vitest)
+        run: npm run --prefix app test
 
       - name: Build (tsc -b + vite build)
         run: npm run --prefix app build
