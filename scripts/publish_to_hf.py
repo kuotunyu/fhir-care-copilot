@@ -22,7 +22,9 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -41,8 +43,19 @@ UPLOAD_IGNORE_PATTERNS = [
     ".mypy_cache/*",
     ".ruff_cache/*",
     ".pytest_cache/*",
-    ".claude/*",
-    "reports/*",
+    # `.claude/` 底下只有兩類東西:開發機的編輯器設定(launch.json、settings.local.json)
+    # 與**專案 skill 文件**。前者對讀者沒有意義,後者有——README 直接連到
+    # `.claude/skills/run-eval/SKILL.md`(eval 的指標定義與已知限制寫在那裡)。
+    # 所以只排除設定檔,skills 照上傳。
+    ".claude/launch.json",
+    ".claude/settings*",
+    # **只排除 reports 底下的原始 JSON,保留 .md**(12 個檔、69 KB)。
+    #
+    # README 直接連到 reports/model_comparison_full.md、injection_ab.md、
+    # loadtest/comparison.md 等——整個 reports/ 排掉的話,Space 首頁上那些連結
+    # 全部 404,而它們正是「每個數字都指得回原始輸出」這個賣點的落點。
+    # JSON 有 0.9 MB 且沒有人會在網頁上讀,排掉。
+    "reports/*.json",
     "audit_log/*",
 ]
 
@@ -73,6 +86,31 @@ def assemble_space_readme(project_readme: Path) -> str:
     """
     body = project_readme.read_text(encoding="utf-8")
     return SPACE_README_FRONT_MATTER + body
+
+
+def _simulate_upload() -> tuple[list[tuple[str, int]], int]:
+    """實際套用 ignore 規則,回傳會上傳的檔案清單與總大小。
+
+    ``upload_folder`` 的 ``ignore_patterns`` 用的是 fnmatch,而 fnmatch 的 ``*``
+    會跨過 ``/``——所以 ``reports/*.json`` 也會命中 ``reports/loadtest/x.json``。
+    這裡用同一套語意模擬,免得 dry-run 講的跟真的做的不一樣。
+    """
+    kept: list[tuple[str, int]] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if any(fnmatch.fnmatch(rel, pattern) for pattern in UPLOAD_IGNORE_PATTERNS):
+            continue
+        kept.append((rel, path.stat().st_size))
+    return kept, sum(size for _, size in kept)
+
+
+def _broken_readme_links(uploaded: set[str], project_readme: Path) -> list[str]:
+    """README 裡連到 repo 內檔案、但那些檔案不會被上傳的連結。"""
+    text = project_readme.read_text(encoding="utf-8")
+    links = sorted({m for m in re.findall(r"\]\(([^)#:]+\.(?:md|png|json|ya?ml|py))\)", text)})
+    return [link for link in links if link not in uploaded and (REPO_ROOT / link).exists()]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -136,6 +174,20 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("ignore patterns:")
     for pattern in UPLOAD_IGNORE_PATTERNS:
         logger.info("  - %s", pattern)
+
+    kept, total = _simulate_upload()
+    logger.info("實際會上傳:%d 個檔案,合計 %.1f MB", len(kept), total / 1024 / 1024)
+    logger.info("最大的幾個:")
+    for rel, size in sorted(kept, key=lambda x: -x[1])[:5]:
+        logger.info("  %7.0f KB  %s", size / 1024, rel)
+
+    broken = _broken_readme_links({rel for rel, _ in kept}, project_readme)
+    if broken:
+        # dry-run 原本只印出排除樣式,看不出「README 連到的檔案被排除了」——
+        # 那要等真的發布、點開 Space 首頁才會發現連結 404。
+        logger.warning("README 連到但**不會上傳**的檔案(Space 上會 404):")
+        for link in broken:
+            logger.warning("  - %s", link)
     if secrets:
         logger.info("secrets to set(僅列名稱,不印值): %s", ", ".join(sorted(secrets)))
 
