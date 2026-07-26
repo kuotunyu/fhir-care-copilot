@@ -110,8 +110,12 @@ class GeminiProvider:
         api_key: str | None = None,
         backup_api_keys: Sequence[str] = (),
         timeout_seconds: float | None = None,
+        max_output_tokens: int | None = None,
     ) -> None:
         self.model_id = model_id
+        # guardrails.yaml 的 max_output_tokens **原本只被載入,沒有傳給任何 provider**,
+        # 但 MODEL_CARD 把它列為 agent loop 的護欄之一——文件承諾了、實作沒有。
+        self._max_output_tokens = max_output_tokens
         key = api_key or os.environ.get("GEMINI_API_KEY")
         if not key:
             raise RuntimeError("GEMINI_API_KEY 未設定,無法建立 GeminiProvider")
@@ -166,6 +170,7 @@ class GeminiProvider:
             system_instruction=system_prompt,
             tools=[_build_tool(specs)],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            max_output_tokens=self._max_output_tokens,
         )
         response = self._with_key_failover(
             lambda: self._client.models.generate_content(
@@ -192,6 +197,7 @@ class GeminiProvider:
         config = types.GenerateContentConfig(
             tools=[_build_tool(state.tool_specs)],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            max_output_tokens=self._max_output_tokens,
         )
         response = self._with_key_failover(
             lambda: self._client.models.generate_content(

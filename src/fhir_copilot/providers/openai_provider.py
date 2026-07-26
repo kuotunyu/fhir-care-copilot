@@ -85,8 +85,11 @@ class OpenAIProvider:
         model_id: str = "gpt-5.4-mini",
         api_key: str | None = None,
         timeout_seconds: float | None = None,
+        max_output_tokens: int | None = None,
     ) -> None:
         self.model_id = model_id
+        # 見 gemini adapter 的同名欄位:guardrails 的這個值原本沒有傳到任何地方
+        self._max_output_tokens = max_output_tokens
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY 未設定,無法建立 OpenAIProvider")
@@ -110,6 +113,7 @@ class OpenAIProvider:
             instructions=system_prompt,
             input=user_message,
             tools=cast(Any, _build_tools(specs)),
+            max_output_tokens=self._max_output_tokens,
         )
         return _extract_step(response, specs)
 
@@ -129,5 +133,6 @@ class OpenAIProvider:
             previous_response_id=state.previous_response_id,
             input=cast(Any, input_items),
             tools=cast(Any, _build_tools(state.tool_specs)),
+            max_output_tokens=self._max_output_tokens,
         )
         return _extract_step(response, state.tool_specs)

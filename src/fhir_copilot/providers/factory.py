@@ -11,7 +11,12 @@ from fhir_copilot.providers.mock import MockProvider
 from fhir_copilot.providers.openai_provider import OpenAIProvider
 
 
-def make_provider(name: str | None = None, *, timeout_seconds: float | None = None) -> Provider:
+def make_provider(
+    name: str | None = None,
+    *,
+    timeout_seconds: float | None = None,
+    max_output_tokens: int | None = None,
+) -> Provider:
     """建立 provider;``name`` 省略時用 configs/models.yaml 的 ``default_provider``。
 
     ``timeout_seconds`` 是**單次呼叫**的逾時,會傳給各 SDK 的 HTTP client
@@ -35,8 +40,15 @@ def make_provider(name: str | None = None, *, timeout_seconds: float | None = No
             if (value := os.environ.get(env_name))
         ]
         return GeminiProvider(
-            model_id=model_id, backup_api_keys=backups, timeout_seconds=timeout_seconds
+            model_id=model_id,
+            backup_api_keys=backups,
+            timeout_seconds=timeout_seconds,
+            max_output_tokens=max_output_tokens,
         )
     if resolved == "openai":
-        return OpenAIProvider(model_id=model_id, timeout_seconds=timeout_seconds)
+        return OpenAIProvider(
+            model_id=model_id,
+            timeout_seconds=timeout_seconds,
+            max_output_tokens=max_output_tokens,
+        )
     raise KeyError(f"未知的 provider 名稱:'{resolved}'(models.yaml 有定義,但沒有對應實作)")

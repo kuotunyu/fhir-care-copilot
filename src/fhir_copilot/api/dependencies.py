@@ -153,7 +153,13 @@ def get_provider() -> Provider:
     name = get_provider_name()
     resilience = get_ops().resilience
     instrumented = InstrumentedProvider(
-        make_provider(name, timeout_seconds=resilience.provider_timeout_seconds),
+        make_provider(
+            name,
+            timeout_seconds=resilience.provider_timeout_seconds,
+            # guardrails 的輸出上限一直只被載入、沒有傳給任何 provider,而
+            # MODEL_CARD 把它列為 agent loop 的護欄之一——文件承諾了、實作沒有。
+            max_output_tokens=get_guardrails().max_output_tokens,
+        ),
         get_metrics(),
         name,
     )

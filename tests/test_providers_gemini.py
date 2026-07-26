@@ -202,3 +202,44 @@ class TestQuotaFailover:
             provider.start(system_prompt="s", user_message="q", tool_specs=())
 
         assert used == ["primary"], "非配額錯誤不該換金鑰"
+
+
+def test_max_output_tokens_reaches_the_sdk(provider: GeminiProvider) -> None:
+    """guardrails 的輸出上限**要真的傳到 SDK**。
+
+    `configs/guardrails.yaml` 的 `max_output_tokens` 原本只被載入,沒有傳給任何
+    provider——而 MODEL_CARD 把它列為 agent loop 的四道護欄之一。**文件承諾了、
+    實作沒有**,那比沒有護欄更糟,因為讀文件的人會以為有。
+    """
+    captured: dict[str, Any] = {}
+
+    def capture(*, model: str, contents: Any, config: Any) -> Any:
+        captured["config"] = config
+        return _FakeResponse()
+
+    limited = GeminiProvider(
+        model_id="gemini-3.1-flash-lite", api_key="fake", max_output_tokens=256
+    )
+    limited._client = FakeClient()  # type: ignore[assignment]
+    limited._client.models.generate_content = capture  # type: ignore[assignment]
+
+    limited.start(system_prompt="s", user_message="q", tool_specs=())
+    assert captured["config"].max_output_tokens == 256
+
+    limited.continue_with_tool_results(
+        _State(), [ToolCallOutcome(call_id="c1", tool_name="t", output={})]
+    )
+    assert captured["config"].max_output_tokens == 256, "第二輪也要帶上,不能只有第一次"
+
+
+def test_no_limit_when_not_configured(provider: GeminiProvider) -> None:
+    """對照組:沒設定時不要硬塞一個值進去,交給 SDK 用它的預設。"""
+    captured: dict[str, Any] = {}
+
+    def capture(*, model: str, contents: Any, config: Any) -> Any:
+        captured["config"] = config
+        return _FakeResponse()
+
+    provider._client.models.generate_content = capture  # type: ignore[assignment]
+    provider.start(system_prompt="s", user_message="q", tool_specs=())
+    assert captured["config"].max_output_tokens is None

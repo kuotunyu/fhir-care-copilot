@@ -106,3 +106,23 @@ def test_tools_are_resent_every_turn(provider: OpenAIProvider) -> None:
         _state(), [ToolCallOutcome(call_id="c1", tool_name="t", output={})]
     )
     assert "tools" in provider._client.responses.last_kwargs  # type: ignore[attr-defined]
+
+
+def test_max_output_tokens_reaches_the_sdk() -> None:
+    """同 gemini adapter:guardrails 的輸出上限要真的傳到 SDK。"""
+    limited = OpenAIProvider(model_id="gpt-5.4-mini", api_key="fake", max_output_tokens=256)
+    limited._client = FakeClient()  # type: ignore[assignment]
+
+    limited.start(system_prompt="s", user_message="q", tool_specs=())
+    assert limited._client.responses.last_kwargs["max_output_tokens"] == 256  # type: ignore[attr-defined]
+
+    limited.continue_with_tool_results(
+        _state(), [ToolCallOutcome(call_id="c1", tool_name="t", output={})]
+    )
+    assert limited._client.responses.last_kwargs["max_output_tokens"] == 256  # type: ignore[attr-defined]
+
+
+def test_no_limit_when_not_configured(provider: OpenAIProvider) -> None:
+    """對照組:沒設定時傳 None,交給 SDK 用預設。"""
+    provider.start(system_prompt="s", user_message="q", tool_specs=())
+    assert provider._client.responses.last_kwargs["max_output_tokens"] is None  # type: ignore[attr-defined]

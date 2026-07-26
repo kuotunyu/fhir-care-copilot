@@ -8,4 +8,7 @@ max_tool_rounds: 6 # 單次對話最多幾輪「LLM 要求呼叫工具 → 執�
 # 所以卡在單次 API 呼叫時這個值攔不到。單次呼叫逾時待營運層 Phase 3 補上。
 timeout_seconds: 30
 max_input_chars: 4000 # 使用者輸入長度上限(防過長輸入拖垮 loop/預算)
-max_output_tokens: 1024 # 單次回答輸出上限(目前僅載入,尚未傳給任何 provider)
+max_output_tokens: 1024 # 單次回答輸出上限,會傳給 provider SDK
+# (2026-07-26 之前這個值**只被載入、沒有傳給任何 provider**,但 MODEL_CARD 一直
+#  把它列為 agent loop 的四道護欄之一——文件承諾了、實作沒有,那比沒有護欄更糟,
+#  因為讀文件的人會以為有保護。已接到兩個 adapter,並有測試守著。)
