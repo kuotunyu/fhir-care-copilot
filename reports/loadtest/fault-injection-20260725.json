@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-07-25T21:32:04+00:00",
+  "chat_vus": 48,
+  "duration_seconds": 40,
+  "scenarios": [
+    {
+      "key": "healthy",
+      "title": "一切正常(對照組)",
+      "expectation": "chat 正常回答;health 快速。這一列是其餘場景的比較基準",
+      "chat": {
+        "p50_ms": 654.1296,
+        "p95_ms": 1290.77692,
+        "requests": 0.0,
+        "refused_rate": 0.0,
+        "http_error_rate": 0.0
+      },
+      "health": {
+        "p50_ms": 330.45785,
+        "p95_ms": 606.9244399999998,
+        "p99_ms": 632.1822440000001,
+        "max_ms": 685.3323,
+        "requests": 0.0
+      }
+    },
+    {
+      "key": "provider_down",
+      "title": "provider 持續失敗(100%)",
+      "expectation": "chat 回結構化拒答(HTTP 200 + refused)、熔斷開啟後快速失敗;**health 不該被拖慢**",
+      "chat": {
+        "p50_ms": 54.3286,
+        "p95_ms": 67.8603,
+        "requests": 0.0,
+        "refused_rate": 1.0,
+        "http_error_rate": 0.0
+      },
+      "health": {
+        "p50_ms": 30.7604,
+        "p95_ms": 126.26836499999351,
+        "p99_ms": 1885.616841999998,
+        "max_ms": 2281.8879,
+        "requests": 0.0
+      }
+    },
+    {
+      "key": "provider_flaky",
+      "title": "provider 間歇失敗(50%)",
+      "expectation": "重試吸收掉一部分失敗;成功率高於 50%,但延遲因退避而上升",
+      "chat": {
+        "p50_ms": 2454.0844,
+        "p95_ms": 4024.6768,
+        "requests": 0.0,
+        "refused_rate": 0.2615933412604043,
+        "http_error_rate": 0.0
+      },
+      "health": {
+        "p50_ms": 237.6104,
+        "p95_ms": 527.341,
+        "p99_ms": 666.5903,
+        "max_ms": 752.744,
+        "requests": 0.0
+      }
+    },
+    {
+      "key": "provider_slow_no_breaker",
+      "title": "provider 極慢(3 秒),熔斷閾值調到極高",
+      "expectation": "**這是沒有熔斷的對照組**:provider 沒有失敗、只是很慢,所以熔斷不會開;請求全部卡在 provider 上把 threadpool 佔滿",
+      "chat": {
+        "p50_ms": 6068.733399999999,
+        "p95_ms": 12121.22652,
+        "requests": 0.0,
+        "refused_rate": 0.0,
+        "http_error_rate": 0.0
+      },
+      "health": {
+        "p50_ms": 3430.83475,
+        "p95_ms": 5775.39279,
+        "p99_ms": 5978.065879,
+        "max_ms": 6054.6087,
+        "requests": 0.0
+      }
+    },
+    {
+      "key": "audit_db_down",
+      "title": "稽核資料庫連不上",
+      "expectation": "health 回 degraded 而不是死掉;chat fail closed 回 503;唯讀端點不受影響",
+      "chat": {
+        "p50_ms": 42.8084,
+        "p95_ms": 59.50367999999993,
+        "requests": 0.0,
+        "refused_rate": 0.0,
+        "http_error_rate": 1.0
+      },
+      "health": {
+        "p50_ms": 30.14025,
+        "p95_ms": 1313.0908399999996,
+        "p99_ms": 1843.6148939999994,
+        "max_ms": 1928.1856,
+        "requests": 0.0
+      }
+    }
+  ]
+}

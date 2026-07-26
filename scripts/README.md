@@ -12,7 +12,12 @@
 - `verify_audit_chain.py`（營運層 Phase 4）— 掃描稽核軌跡的 hash chain，
   壞掉時**指出是哪一列**；exit code 1 方便接進 cron 或 CI。有 `DATABASE_URL`
   就驗 Postgres，沒有就驗 JSONL
-- `loadtest/`（營運層 Phase 0）— k6 腳本
+- `run_fault_injection.py`（營運層 Phase 5）— 五個故障場景，每個場景一邊用固定併發打
+  `/api/chat`、一邊以固定速率打 `/api/health`，兩者延遲分開記錄。**要看的是 health**——
+  它被拖慢就代表 threadpool 被佔滿了
+- `compare_loadtests.py`（營運層 Phase 5）— 把四個階段的負載測試 JSON 併成一張前後
+  對照表（`reports/loadtest/comparison.md`）。**數字由程式產生，不手打**
+- `loadtest/`（營運層 Phase 0/5）— k6 腳本（`api.js` 併發矩陣、`faults.js` 故障注入）
 - `export_trace_sample.py`（營運層 Phase 2）— 跑一次完整 `POST /api/chat`，把 trace
   匯出成 JSON 存進 `reports/traces/`（commit 進 repo 的可觀測性證據）
 - `publish_to_hf.py`（M7）— 發布到 Hugging Face Docker Space，**預設 dry-run**，

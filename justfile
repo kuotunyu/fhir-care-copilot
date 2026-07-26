@@ -54,6 +54,15 @@ loadtest-baseline:
 loadtest-final:
     uv run python scripts/run_loadtest.py --label final
 
+# 故障注入場景表:五個場景各自一邊打爆 /api/chat、一邊固定速率打 /api/health。
+# 要看的是 health——它被拖慢就代表 threadpool 被佔滿了。約需 5 分鐘。
+loadtest-faults:
+    uv run python scripts/run_fault_injection.py
+
+# 把已有的四個階段併成一張前後對照表。數字由程式產生,不手打。
+loadtest-compare:
+    uv run python scripts/compare_loadtests.py
+
 # ---- M4:前端(app/) ----
 
 # 前端裝依賴(用 --prefix 而非 cd app:just 預設每行是獨立殼層呼叫,
