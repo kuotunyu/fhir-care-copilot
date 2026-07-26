@@ -68,7 +68,7 @@ just run                                                              # build �
 
 截圖腳本每次都會順便驗「375px 下沒有橫向溢位」——那是 M4 的驗收條件之一，現在變成回歸檢查。
 
-> **沒有「結構化拒答」的截圖**，因為從介面上走不到那條路徑：唯一的拒答觸發點是「病患不存在」（工具回 `ok=False`），而選擇器只列得出真實存在的病患。這是產品缺口，不是截圖漏拍——見下方已知限制。
+> **仍然沒有「結構化拒答」的截圖。** 原因在 2026-07-26 變了：當時是「從介面上走不到那條路徑」（唯一觸發點是病患不存在，而選擇器只列得出存在的病患），那是產品缺口，已經補上——現在問一個工具涵蓋不到的問題（例如保險給付）會走到拒答。**但要不要走到取決於模型當下有沒有呼叫 `report_out_of_scope`，那個比例還沒量測**，所以拍不出一張能代表「這就是它的行為」的圖。等有 eval 數字再補。
 
 ## 架構
 
@@ -80,7 +80,7 @@ flowchart LR
     P --> G[Gemini gemini-3.1-flash-lite<br/>google-genai]
     P --> O[OpenAI gpt-5.4-mini<br/>Responses API]
     P --> M[Mock Provider<br/>CI / 無金鑰 demo mode]
-    AL --> TR[Tool Registry<br/>5 個唯讀工具]
+    AL --> TR[Tool Registry<br/>5 個唯讀資料工具<br/>+ 1 個 out-of-scope 宣告]
     TR --> FS[FHIRStore interface]
     FS --> LB[LocalBundleFHIRStore<br/>本地 JSON bundles]
     FS -.預留.-> HAPI[HAPI FHIR adapter]
@@ -101,11 +101,11 @@ flowchart LR
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界；eval 內建 injection 題型驗證（見下方 eval 結果） |
 | **病患範圍由伺服器端注入，LLM 無法竄改** | `patient_id` 從 LLM 看得到的工具 schema 中移除（[`tools/registry.py:llm_facing_schema`](src/fhir_copilot/tools/registry.py)），由 agent loop 依對話 session 直接注入工具呼叫（見 [ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
 | **Secret 只從環境變數來** | `.env`、`data/raw`、`data/processed` 永不進 git（`.gitignore`） |
-| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；**單次 provider 呼叫的逾時另外設在 [`configs/ops.yaml`](configs/ops.yaml)**，並下到 SDK 的 HTTP client（真的中止請求，不是「不等它」）。`max_output_tokens` 也會傳到兩個 provider 的 SDK——**在 2026-07-26 之前它只被載入、沒有傳給任何人**，而這張表一直把它列為護欄，等於文件承諾了、實作沒有 |
+| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`、`require_tool_call_before_answer=true`（`configs/guardrails.yaml`，不寫死在程式）。最後一項把「LLM 不憑記憶回答病患事實」從 prompt 要求變成**結構保證**：一次工具都沒執行就作答時直接結構化拒答，那種回答不會被標成 `refused=false` 送出去。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；**單次 provider 呼叫的逾時另外設在 [`configs/ops.yaml`](configs/ops.yaml)**，並下到 SDK 的 HTTP client（真的中止請求，不是「不等它」）。`max_output_tokens` 也會傳到兩個 provider 的 SDK——**在 2026-07-26 之前它只被載入、沒有傳給任何人**，而這張表一直把它列為護欄，等於文件承諾了、實作沒有 |
 
 完整 threat model 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)。
 
-## 5 個唯讀工具
+## 唯讀工具：5 個查資料 + 1 個宣告查不到
 
 | 工具 | 用途 |
 |---|---|
@@ -114,8 +114,11 @@ flowchart LR
 | `list_active_medications` | 目前生效中（`status=active`）的用藥 |
 | `get_recent_observations` | 最近的觀察值（生命徵象/檢驗結果），可依類別篩選 |
 | `get_care_plan_timeline` | 照護計畫時間軸 |
+| `report_out_of_scope` | **不查任何資料**：讓模型明講「這題上面五個都涵蓋不到」 |
 
 每個工具的輸入輸出皆為 Pydantic v2 嚴格 schema（`ConfigDict(strict=True, extra="forbid")`），查無資料回傳明確的 insufficient 結構，不是用空 list 混過去。
+
+**為什麼最後一個是工具而不是解析回答文字**：判斷「模型是不是在拒答」如果靠關鍵字或語意判斷，就回到這個專案一直在避免的東西——啟發式判準（eval 的 judge 在這件事上改過五次還是不穩）。給模型一個工具去宣告，把判斷問題變成結構問題。它仍然是唯讀的，而且比唯讀更嚴格：完全不碰 store、不回傳任何病患欄位、不產生 evidence。資料出口的數量沒有因為它而增加，[`tests/test_tools_registry.py`](tests/test_tools_registry.py) 有兩條測試分別釘住「查資料的工具恰好五個」與「不查資料的只准有這一個」。
 
 ## Eval 結果（真實 API 呼叫，非預估值）
 
@@ -319,7 +322,8 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
 - 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
 - **前端沒有單元測試**。CI 會跑 `oxlint` 與 `tsc -b && vite build`，所以型別錯誤與 lint 問題擋得住，但**元件行為沒有測試覆蓋**；UI 的回歸目前靠截圖腳本（會驗 375px 無橫向溢位）與人工檢查
-- **從 UI 走不到結構化拒答**：唯一的拒答觸發點是「病患不存在」，而病患選擇器只列得出真實存在的病患。「病患存在但工具查不到」（例如問保險給付）目前不會觸發拒答，是架構上還沒做的部分
+- **`report_out_of_scope` 的實際觸發率還沒量測**：「病患存在但工具查不到」現在有結構性處理了（模型呼叫該工具即結構化拒答，機制有確定性測試守著），但**模型在多大比例的 out-of-scope 問題上會真的呼叫它，還沒有數字**。那需要一組專門的 eval 題目。在有數字之前，這裡只宣稱機制存在，不宣稱涵蓋率
+- **`reports/` 底下的 eval 數字是在這兩道護欄之前量的**。`require_tool_call_before_answer` 會讓「零工具呼叫就作答」變成結構化拒答，而部分注入手法（例如要求交出 system prompt）正屬於這一類——也就是說目前的注入抵抗率**應該比報表上的數字更高**，但沒有重跑就沒有數字。要重現舊數字把該設定設成 `false`
 - 「不可回答」題型目前只涵蓋「病患不存在」情境
 - 開發樣本為 Synthea 1K 樣本的 100 位子集，非完整資料集（詳見 [DATA_CARD.md](DATA_CARD.md)）
 - Practitioner/Organization 的參照解析已對真實資料驗證可行；`ExplanationOfBenefit` 內的 contained-resource 參照（`#` 開頭）目前無工具讀取，故無法解析

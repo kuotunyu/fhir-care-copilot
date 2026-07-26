@@ -169,7 +169,7 @@ flowchart LR
     P --> G[Gemini 2.5 Flash-Lite<br/>google-genai]
     P --> O[OpenAI gpt-5.4-mini<br/>Responses API]
     P --> M[Mock Provider<br/>CI / demo mode]
-    AL --> TR[Tool Registry<br/>5 個唯讀工具]
+    AL --> TR[Tool Registry<br/>5 個唯讀資料工具<br/>+ 1 個 out-of-scope 宣告]
     TR --> FS[FHIRStore interface]
     FS --> LB[LocalBundleFHIRStore<br/>本地 JSON bundles]
     FS -.預留.-> HAPI[HAPI FHIR adapter]
@@ -183,7 +183,8 @@ flowchart LR
 ```
 src/fhir_copilot/
   store/        # FHIRStore protocol + LocalBundleFHIRStore（+ 預留 hapi.py interface）
-  tools/        # 5 個唯讀工具 + propose_care_note（不進 agent loop allowlist）
+  tools/        # 5 個唯讀資料工具 + report_out_of_scope（不查資料的宣告工具）
+                # + propose_care_note（不進 agent loop allowlist）
   agent/        # loop、護欄、回應契約
   providers/    # base + gemini + openai + mock
   api/          # FastAPI app

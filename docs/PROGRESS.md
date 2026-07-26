@@ -6,6 +6,112 @@
 
 ---
 
+## 2026-07-26（續八）— 清掉待辦：兩道新的結構化拒答、前端單元測試進 CI
+
+### 一、我第一次的設計是錯的，是實測推翻的
+
+待辦上寫著「病患存在但工具查不到的結構化拒答」。我先做的判準是
+**「模型一次工具都沒執行就給出最終答案 → 拒答」**，理由是：那時它不可能有任何
+確定性依據，而回應契約卻標成 `refused=false`、`evidence=[]`。
+
+寫完、測試全過之後，拿真實模型跑了四題 out-of-scope 問題。**0/4 觸發。**
+
+```
+Q: 他上次住院是什麼時候?
+   refused=False  evidence=2
+   answer=該病患上一次的住院紀錄（Fracture care）是在 2016 年 5 月 21 日開始…
+
+Q: 他的保險給付範圍包含哪些項目?
+   refused=False  evidence=3
+   answer=抱歉，我目前無法查閱該病患的保險合約或給付範圍相關資訊。…
+```
+
+兩件事：
+
+1. 第一題**根本不是 out-of-scope**——照護計畫裡真的有那筆資料。是我假設錯了
+2. 第二題暴露了真正的形狀：**模型會先乖乖呼叫工具**、拿到不相關資料、再用自然
+   語言說自己答不出來。所以「零工具呼叫」這個判準根本碰不到它
+
+而第二題的契約錯得更難看：一句「我無法查閱保險資訊」，掛著 **3 筆不支持它的
+evidence**，`refused=False`。回答內容對，契約錯——下游（eval 指標、UI、稽核）
+分辨不出「查了而且答出來」與「查了但答不出來」，而那兩件事該做的下一步完全不同。
+
+**如果我只跑測試不跑真實模型，這個設計會帶著「已完成」的標記進 git。**
+
+### 二、修法：讓模型用工具明講，不要解析它的回答文字
+
+新增 `report_out_of_scope`：不查任何資料、不碰 store、不產生 evidence，
+唯一作用是把「這題查不到」變成一個可偵測的事件。loop 一看到就立刻拒答，
+**不讓模型把話講完**。
+
+判斷「模型是不是在拒答」如果靠關鍵字或語意判斷，就回到這個專案一直在避免的
+啟發式判準——eval 的 judge 在這件事上改過五次還是不穩。給模型一個工具去宣告，
+把判斷問題變成結構問題。
+
+安全邊界沒有放寬：資料出口仍是五個。`ToolSpec` 加了 `queries_patient_data`
+旗標，而 `tests/test_tools_registry.py` 有兩條測試分別釘住
+「查資料的恰好五個」與「不查資料的只准有這一個」——後者是防這個旗標變成後門。
+
+原本那道「沒查資料不准答」的護欄**留著**（`require_tool_call_before_answer`，
+可在 `configs/guardrails.yaml` 關掉）。它沒有解決待辦上那件事，但它自己是對的：
+把「LLM 不憑記憶回答病患事實」從 prompt 要求變成結構保證。
+
+### 三、誠實揭露：機制有了，涵蓋率沒有數字
+
+`report_out_of_scope` 的機制有確定性測試守著——模型一旦呼叫就必定拒答、
+且不掛 evidence。但**模型在多大比例的 out-of-scope 問題上會真的呼叫它，還沒量測**。
+那需要一組專門的 eval 題目，而今天 Gemini 免費層 500 req/day 已經用完
+（主金鑰與三把備援都空了）。在有數字之前只宣稱機制存在，不宣稱涵蓋率。
+
+同理：**`reports/` 底下的 eval 數字是在這兩道護欄之前量的**。
+`require_tool_call_before_answer` 會讓「零工具呼叫就作答」變成結構化拒答，
+而部分注入手法（例如要求交出 system prompt）正屬於這一類——
+也就是說現在的注入抵抗率**應該比報表高**，但沒重跑就沒有數字。
+要重現舊數字把該設定設成 `false`。
+
+### 四、前端單元測試（35 個）
+
+vitest + @testing-library/react。涵蓋到哪、沒涵蓋到哪都寫在 CI 的註解裡：
+
+| 測到什麼 | 為什麼是這三個 |
+|---|---|
+| `api.ts`（17） | 金鑰注入的**唯一**入口，6 個 API 呼叫都走它；錯誤翻譯也在這裡 |
+| `StatusBar`（9） | **demo mode 與真實模式的文案互斥**——就是昨天那個坑唯一在 UI 上分辨得出來的地方 |
+| `ChatPanel`（9） | Phase 1 做的 401/429/預算訊息，在此之前沒有任何東西守著 |
+
+**沒有涵蓋**：PatientSelector / PatientTimeline / EvidenceDrawer 的渲染，
+以及任何版面行為（自動捲動在 jsdom 裡是 stub 掉的，這一點寫在 `test-setup.ts`）。
+
+兩個實作細節：測試檔放 `src/` 底下，所以 `tsc -b` 會一併型別檢查它們，而
+production bundle 完全不受影響（改動前後都是 `index-CHfb7n9a.js`，209.24 kB，
+連 hash 都一樣）。`vitest` 一開始裝成 `^3`，它會夾帶自己那份 rollup 版的 vite
+與專案的 vite 8（rolldown）型別打架，升到 4 才乾淨。
+
+`just frontend-check` = test + lint + build，刻意**不掛進 `just check`**：
+後端那條要能在沒裝 node_modules 的機器上跑完，而且它是 pre-commit 會走的路徑。
+
+### 五、測試輸出
+
+```
+uv run ruff check .        All checks passed!
+uv run ruff format --check 103 files already formatted
+uv run mypy                Success: no issues found in 103 source files
+uv run pytest              407 passed, 9 skipped in 40.67s
+
+npm --prefix app run test  Test Files 3 passed (3) / Tests 35 passed (35)
+npm --prefix app run lint  (oxlint, 無輸出即通過)
+npm --prefix app run build ✓ built in 77ms
+```
+
+### 六、下一步
+
+- **out-of-scope 的 eval 題組**（等額度重置）：一組「病患存在但工具查不到」的
+  題目，ground truth 是「應該拒答」，量 `report_out_of_scope` 的實際觸發率
+- **重跑 injection eval**：兩道新護欄之後的數字，跟 `reports/` 上的舊數字對照
+- 給 Space 專屬的 Gemini 金鑰，不要跟開發、eval 搶同一份免費額度
+
+---
+
 ## 2026-07-26（續七）— 部署到 Hugging Face Space，以及發布腳本自己保證會部署錯的兩個順序問題
 
 Space 已上線：`steven0226/fhir-care-copilot`（public、Docker SDK、free cpu-basic）。
