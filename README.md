@@ -393,7 +393,8 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 三個實際部署時才會踩到、已經修掉並用測試釘住的坑：
 
 - **`FHIR_COPILOT_PROVIDER` 不能省。** `models.yaml` 的 `default_provider` 是 `mock`，
-  只設金鑰而不指定 provider，Space 會安靜地跑成 mock demo mode——**網頁看起來完全正常**。
+  只設金鑰而不指定 provider，Space 會退回 mock demo mode——**而發布腳本從頭到尾
+  印的全是成功**，沒有任何一步失敗。
 - **Secret 必須在上傳內容之前設定。** 上傳會觸發 HF 開始 build，build 出來的容器
   帶的是當下存在的環境變數；先上傳後設 secret 等於保證第一個容器拿不到金鑰。
   腳本現在的順序是 create → secrets → upload → `restart_space()`，
@@ -401,8 +402,9 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 - **`--set-secret-from-env` 優於 `--set-secret NAME=VALUE`**：後者會把金鑰留在
   shell 歷史與 `ps` 的輸出裡。設定真的 API 金鑰時用前者，命令列上只出現名稱。
 
-**部署後務必確認 `/api/health` 的 `provider` 欄位不是 `mock`**——這是唯一能分辨
-「真的在跑模型」與「安靜退回 demo mode」的地方。
+**部署後務必確認 `/api/health` 的 `provider` 欄位不是 `mock`。** 服務本身會誠實
+揭露降級狀態——前端狀態列在 demo mode 下顯示「示範模式／尚未連接真實 AI」而非
+「已連線真實 AI 模型」——但**發布流程不會告訴你**，所以那一步要自己做。
 
 ## 資料來源與授權
 

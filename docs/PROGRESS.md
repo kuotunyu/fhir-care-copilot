@@ -64,8 +64,19 @@ build 出來的容器帶的是「當下存在的」環境變數**。所以：
 
 `budget_counting_since` 早於 secret 設定時間，一眼看得出容器比 secret 老。
 
-**最糟的部分是它不會失敗。** Space 建起來了、100 位病患進去了、UI 完全正常、
-問答也答得出東西——只是那個 agent 是假的。沒去對 `provider` 欄位就不會發現。
+**最糟的部分是它不會失敗。** Space 建起來了、100 位病患進去了、問答也答得出東西
+——只是那個 agent 是假的。整個發布流程從頭到尾印的全是成功，沒有例外、沒有紅字、
+沒有非 200。
+
+**這裡要修正一個我先前寫錯的說法。** 當時我寫「網頁看起來完全正常，看不出來」，
+事後用 Playwright 把線上頁面真的跑起來才發現：**前端狀態列一直有明確標示**——
+demo mode 顯示「示範模式／尚未連接真實 AI，以下所有回答都是預先設定的模擬資料」
+（`status-panel--demo`），真實模式顯示「已連線真實 AI 模型／目前使用 gemini ·
+gemini-3.1-flash-lite」（`status-panel--live`）。Phase 1 的 StatusBar 就是為這件事做的。
+
+所以正確的說法是：**服務本身誠實揭露了降級狀態，沒有揭露的是發布流程。**
+分辨得出來的地方有兩個（`/api/health` 的 `provider` 欄位、前端狀態列），
+但兩個都要人主動去看——而 `publish_to_hf.py` 當時印的是一連串 200 OK。
 
 修法：secret 移到上傳之前；另外在最後明確 `restart_space()`——重跑時內容沒變不會
 觸發 build，舊容器會繼續用舊環境。
@@ -98,7 +109,13 @@ AssertionError: secret 必須在上傳之前設定,實際順序:
 
 答案與本機逐項一致，5 筆 evidence 各自帶 `Condition/{id}`。`/metrics` 上
 `provider_errors_total`、`refusals_total`、`circuit_state_changes_total` 皆無樣本。
-前端 `/`、`/assets/*.js`、`/assets/*.css` 皆 200。
+
+**UI 另外用 Playwright 真的渲染過一次**，不是只確認 `/assets/*.js` 回 200
+——「檔案送得出去」與「瀏覽器跑得起來且連得到後端」是兩個不同的宣稱，而前端用的是
+硬編相對路徑，在 HF 的反向代理後面能不能通只有真的跑一次才知道。結果：
+標題正確、100 位病患清單渲染出來（證明前端打得到 `/api/patients`）、
+病歷時間軸四個分頁（診斷 5／用藥 0／觀察值 20／照護計畫 2）皆有資料、
+**console error 0、failed request 0**。
 
 ### 五、測試輸出
 
