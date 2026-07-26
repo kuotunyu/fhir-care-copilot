@@ -13,9 +13,16 @@ models:
     output_per_1m_usd: 0.40
 
   gemini-3.1-flash-lite:
-    # 已驗證(2026-07-24,官方定價頁):目前實際在用的模型。
+    # 已驗證(2026-07-24,官方定價頁)。2026-07-26 換成 3.5 之後不再是預設,
+    # 但 M6 那份對照報告的數字出自它,單價留著才對得回去。
     input_per_1m_usd: 0.25
     output_per_1m_usd: 1.50
+
+  gemini-3.5-flash-lite:
+    # 已驗證(2026-07-26,官方定價頁):目前實際在用的模型。
+    # 比 3.1 貴——input 1.2 倍、**output 1.67 倍**。絕對值仍低。
+    input_per_1m_usd: 0.30
+    output_per_1m_usd: 2.50
 
   gpt-5.4-mini:
     input_per_1m_usd: 0.75

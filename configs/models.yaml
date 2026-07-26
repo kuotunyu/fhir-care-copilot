@@ -8,11 +8,17 @@ providers:
     # CI 與離線開發預設 provider;不打任何外部 API。
 
   gemini:
-    # 2026-07-19 查證時 gemini-2.5-flash-lite 是現行 GA 模型;2026-07-24 實測
-    # 發現該模型「對新使用者已下架」(呼叫回 404,即使 client.models.list()
-    # 仍列得出來)——這把金鑰打不到。改用目前世代的 flash-lite:
-    # gemini-3.1-flash-lite(已用同一把金鑰實測成功,PLAN.md §7 記錄此事件)。
-    model_id: gemini-3.1-flash-lite
+    # 版本沿革(這一段是「模型可用性會漂移」的實證,不要刪):
+    #   2026-07-19 查證時 gemini-2.5-flash-lite 是現行 GA 模型
+    #   2026-07-24 實測發現它「對新使用者已下架」(呼叫回 404,即使
+    #              client.models.list() 仍列得出來)——**列得出來不等於打得通**
+    #   2026-07-24 改用 gemini-3.1-flash-lite(實測成功),M6 的 eval 數字出自它
+    #   2026-07-26 改用 gemini-3.5-flash-lite,**並重跑 eval**——換模型不重測的話,
+    #              README 上那些數字就掛在一個從沒量過的模型上
+    #
+    # **釘明確版本,不要用 gemini-flash-lite-latest 這種別名。** 別名會讓成本與
+    # eval 數字在沒人知情的時候漂掉,和「每個數字都指得回來源」直接衝突。
+    model_id: gemini-3.5-flash-lite
     sdk: google-genai
     api_key_env: GEMINI_API_KEY
     # 備用 key(429 quota failover,選配,見 PLAN.md §10 風險表)

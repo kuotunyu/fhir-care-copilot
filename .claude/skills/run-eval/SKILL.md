@@ -5,6 +5,21 @@ description: FHIR Care Copilot 的 eval harness——自動產生題目、跑 ag
 
 # run-eval
 
+## 先決條件:金鑰要在環境變數裡,`.env` 不會自動載入
+
+**專案裡沒有任何程式讀 `.env`**(secret 只從環境變數來,是刻意的),所以直接跑
+真 provider 會得到 `RuntimeError: GEMINI_API_KEY 未設定`。跑之前先 export:
+
+```powershell
+$env:GEMINI_API_KEY = "..."   # PowerShell
+```
+
+```bash
+export GEMINI_API_KEY=...     # bash
+```
+
+CI 與 Docker 走 mock provider,不需要金鑰,所以這個落差只在互動式執行時會撞到。
+
 ## 指令
 
 ```bash
@@ -27,8 +42,12 @@ uv run python scripts/generate_model_comparison.py \
 
 ## Gemini 免費層速率限制(實測發現,2026-07-24)
 
-`gemini-3.1-flash-lite` 免費層是 **15 requests/min**。每題至少 2 次 API 呼叫
-(工具呼叫 + 最終回答),沒有 pacing 幾乎一定會撞到 429。用 `--pace-seconds`:
+`gemini-3.1-flash-lite` 免費層是 **15 requests/min**(2026-07-24 實測)。
+`gemini-3.5-flash-lite`(2026-07-26 起的預設)的實際上限沒有單獨量過,
+**沿用同一個保守 pacing**——量測沒做過的東西不要假設它一樣。
+
+每題至少 2 次 API 呼叫(工具呼叫 + 最終回答),沒有 pacing 幾乎一定會撞到 429。
+用 `--pace-seconds`:
 
 ```bash
 uv run python scripts/run_eval.py --provider gemini --pace-seconds 10

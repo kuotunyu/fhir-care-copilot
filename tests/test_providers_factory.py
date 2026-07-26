@@ -25,7 +25,7 @@ def test_gemini_and_openai_require_api_key_but_model_id_comes_from_config() -> N
     from fhir_copilot.config import load_providers
 
     providers, _default = load_providers()
-    assert providers["gemini"].model_id == "gemini-3.1-flash-lite"
+    assert providers["gemini"].model_id == "gemini-3.5-flash-lite"
     assert providers["openai"].model_id == "gpt-5.4-mini"
 
 
