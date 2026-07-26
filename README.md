@@ -34,7 +34,31 @@ just run                                                              # build �
 
 ## 截圖
 
-（待補：病患選擇器 + 時間軸 / 對話與證據抽屜 / 拒答狀態 / cost badge 特寫）
+**由程式產生，不是手動截的**——`scripts/capture_screenshots.py` 自己起後端、走完固定的操作流程再存檔，所以 UI 改了重跑一次就好，不會有「圖跟現況對不上」的問題。用 `mock` provider（deterministic、不花錢），每次跑出來的畫面一致。
+
+### 問答 + 證據抽屜
+
+![問答與證據抽屜](docs/screenshots/02-answer-with-evidence.png)
+
+左邊 100 位病患、中間時間軸（診斷/用藥/觀察值/照護計畫）、右邊問答。**證據抽屜是打開的**——只拍一個聊天泡泡看不出跟一般 chatbot 有什麼差別，這個專案的重點是每個事實都指得回 FHIR resource。
+
+### 成本、延遲與證據的特寫
+
+![成本與證據](docs/screenshots/03-cost-and-evidence.png)
+
+每個回答都附 `model · latency · tokens · cost` 與可追溯的 `resourceType/id`。
+
+### 病患選擇器與時間軸
+
+![病患清單與時間軸](docs/screenshots/01-patient-timeline.png)
+
+### 手機寬度（375px）
+
+![手機寬度](docs/screenshots/04-mobile.png)
+
+截圖腳本每次都會順便驗「375px 下沒有橫向溢位」——那是 M4 的驗收條件之一，現在變成回歸檢查。
+
+> **沒有「結構化拒答」的截圖**，因為從介面上走不到那條路徑：唯一的拒答觸發點是「病患不存在」（工具回 `ok=False`），而選擇器只列得出真實存在的病患。這是產品缺口，不是截圖漏拍——見下方已知限制。
 
 ## 架構
 
@@ -43,7 +67,7 @@ flowchart LR
     U[Browser<br/>React + Vite 工作台] --> API[FastAPI]
     API --> AL[Agent Loop<br/>max rounds / timeout / 輸入長度 / 工具 allowlist]
     AL <--> P[Provider Adapter]
-    P --> G[Gemini gemini-3.5-flash-lite<br/>google-genai]
+    P --> G[Gemini gemini-3.1-flash-lite<br/>google-genai]
     P --> O[OpenAI gpt-5.4-mini<br/>Responses API]
     P --> M[Mock Provider<br/>CI / 無金鑰 demo mode]
     AL --> TR[Tool Registry<br/>5 個唯讀工具]
@@ -269,7 +293,7 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 - 舊的 JSONL 稽核檔（Phase 4 之前、沒有 hash chain 的格式）**不會自動遷移**
 - 日誌只輸出到 stdout，沒有集中式收集；`/metrics` 需要自己接 Prometheus
 - 沒有 Jaeger UI 的截圖（開發機的瀏覽器 pane 無法 compositing），改用 commit 進 repo 的
-  trace JSON 當證據
+  trace JSON 當證據。介面截圖不受影響——那些走 Playwright headless，不需要可見視窗
 
 
 ## 成本
@@ -282,6 +306,7 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
 - 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
+- **從 UI 走不到結構化拒答**：唯一的拒答觸發點是「病患不存在」，而病患選擇器只列得出真實存在的病患。「病患存在但工具查不到」（例如問保險給付）目前不會觸發拒答，是架構上還沒做的部分
 - 「不可回答」題型目前只涵蓋「病患不存在」情境
 - 開發樣本為 Synthea 1K 樣本的 100 位子集，非完整資料集（詳見 [DATA_CARD.md](DATA_CARD.md)）
 - Practitioner/Organization 的參照解析已對真實資料驗證可行；`ExplanationOfBenefit` 內的 contained-resource 參照（`#` 開頭）目前無工具讀取，故無法解析

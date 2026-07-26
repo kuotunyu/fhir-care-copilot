@@ -106,7 +106,7 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   **這一階段不改任何被量測的請求路徑**（FastAPI app、middleware、路由、工具執行、FHIR store），
   基線的意義就是「加東西之前」。
   **驗收**：`reports/loadtest/` 有可重跑的基線數字；參數全部出自 `configs/ops.yaml`。
-- [ ] **Phase 1 — 認證與成本控制**
+- [x] **Phase 1 — 認證與成本控制**（2026-07-25 完成;checkbox 當時漏勾,2026-07-26 回顧時補上）
   API key 認證（`FHIR_COPILOT_REQUIRE_AUTH` 預設 `false`，放行但 `/api/health` 標明未啟用）；
   per-key in-process token bucket 限流；每日預算上限（沿用 `estimate_cost_usd`，缺單價照樣 raise）。
   只保護會花錢／會寫入的端點，`/api/health` 永遠免認證。前端單點注入 key + 401/429 友善訊息。
@@ -147,15 +147,17 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   **實測抓到的 bug**：原本用 `SELECT ... FOR UPDATE` 鎖鏈尾，看起來合理但擋不住
   「另一個交易在它後面插入新列」——真的跑 Postgres 才撞出 `UniqueViolation`。已改用
   advisory lock。
-- [x] **Phase 5 — 最終負載測試與對照**（2026-07-26 完成，端到端那一軌除外）
+- [x] **Phase 5 — 最終負載測試與對照**（2026-07-26 完成，含端到端那一軌）
   重跑完整矩陣並產出**四階段**前後對照表（基線 / ＋守門 / ＋觀測 / ＋韌性稽核），
   表格由 `scripts/compare_loadtests.py` 產生，數字不手打。
   **故障注入場景表**：五個場景各自一邊打爆 `/api/chat`、一邊固定速率打 `/api/health`，兩者延遲分開記錄。
   **這補上了 Phase 3 那個原本只有單元測試支持的宣稱**——沒有熔斷時（provider 只是很慢、不失敗，
   所以熔斷不會開）health 的 p95 是 **5775 ms**，熔斷開啟時是 **126 ms**。那個「沒有熔斷的對照組」
   是必要的：沒有它，「health 沒被拖慢」可能只是負載不夠。
-  **尚未完成**：端到端那一軌（真 provider 少量取樣）需要花真錢且要選 provider，留待授權後執行。
-  README 已依七點清單改寫，並標明該軌未執行。
+  **端到端那一軌同日補完**：`scripts/run_e2e_sample.py`，兩家 provider 各 30 次取樣。
+  刻意不是負載測試——真 provider 有速率限制，併發拉高只會量到一整片 429。
+  服務層在真實請求裡佔 10~19 ms（逐筆差值中位數，約 0.4~0.7%）。
+  README 已依七點清單改寫，兩軌數字標明不可混用。
 
 ## 4. 架構
 
