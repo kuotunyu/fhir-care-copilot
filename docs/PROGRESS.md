@@ -6,6 +6,117 @@
 
 ---
 
+## 2026-07-26 — 營運層 Phase 5（負載對照、故障注入、README 改寫）
+
+**這個 Phase 要回答的問題**
+
+前四個 Phase 各自加了一層控制，但兩個關鍵宣稱一直沒有證據：
+
+1. 「這些控制項很便宜」——沒量過就只是猜
+2. 「熔斷防止 threadpool 被佔滿」（Phase 3 寫的）——只有單元測試支持，
+   而單元測試證明不了「整台服務在下游壞掉時還活著」
+
+Phase 5 的工作就是把這兩句話變成有數字的宣稱，或者**否定它們**。
+
+**做了什麼**
+
+- `scripts/compare_loadtests.py`：把四個階段的 JSON 併成一張對照表。
+  **數字由程式產生，不手打**——手抄的數字會在報告改版時悄悄漂掉
+- `scripts/run_fault_injection.py` + `scripts/loadtest/faults.js`：五個故障場景，
+  每個場景**一邊用 48 併發打 `/api/chat`，一邊以固定 5 req/s 打 `/api/health`**，
+  兩者的延遲分開記錄
+- 重跑完整併發矩陣的第四階段（`final`），與前三階段合成 `reports/loadtest/comparison.md`
+- README 依交接單第七節的七點清單重新組織營運層章節
+- 修正資料庫掛掉時的行為（見下方「量測順手抓到的真 bug」）
+
+**真實測試輸出**
+
+```
+$ uv run ruff check .
+All checks passed!
+
+$ uv run ruff format --check .
+93 files already formatted
+
+$ uv run mypy
+Success: no issues found in 93 source files
+
+$ uv run pytest
+249 passed, 6 skipped in 9.93s
+```
+
+四階段對照（`/api/chat` c1 的 p50，完整表在 `reports/loadtest/comparison.md`）：
+
+| 階段 | p50 |
+|---|---:|
+| 基線 | 603.0 ms |
+| ＋認證/限流/預算 | 604.1 ms |
+| ＋可觀測性 | 603.7 ms |
+| ＋韌性/稽核 | 609.2 ms |
+
+故障注入（完整表在 `reports/loadtest/fault-injection-20260725.md`）：
+
+| 場景 | chat p50 | chat 結果 | health p95 |
+|---|---:|---|---:|
+| 一切正常（對照組） | 654 ms | 正常回答 | 606.9 ms |
+| provider 持續失敗 | 54 ms | 100% 結構化拒答 | **126.3 ms** |
+| provider 間歇失敗（50%） | 2454 ms | 26% 拒答 | 527.3 ms |
+| provider 極慢、熔斷不開（對照組） | 6069 ms | 全部卡住 | **5775.4 ms** |
+| 稽核資料庫連不上 | 43 ms | 100% 結構化 503 | 1313.1 ms |
+
+**決策/發現**
+
+**1. Phase 3 那句宣稱終於有證據了，而證據來自對照組。**
+「熔斷防止 threadpool 被佔滿」如果只量「provider 掛掉時 health 很快」，那是不夠的——
+health 沒被拖慢**可能只是負載不夠**。所以加了一個場景：provider 不失敗、只是慢到 3 秒，
+熔斷閾值調到極高讓它永遠不會開。那一列的 health p95 是 **5775 ms**。
+對照熔斷開啟時的 **126 ms**，這才叫證據。
+
+**沒有那個對照組，這張表證明不了任何事。** 這是這個 Phase 學到最重要的一件事。
+
+**2. `/api/chat` 上量不出控制項的代價，而且這是對的。**
+那條路徑的 600 ms 是 `time.sleep` 造出來的，Windows 排程粒度是毫秒級——
+chat 上幾毫秒的差異**落在儀器的雜訊裡，不是服務的**。真正量得出來的是唯讀端點：
+整層營運控制的每請求成本是 **+0.2 ～ +0.5 ms**。
+
+代價的絕對值很小但比例不小：可觀測性那 0.27 ms 對本來只要 0.55 ms 的 `/api/health`
+是 +50%。寫出來比不寫強。
+
+**3. 量測順手抓到的真 bug：資料庫掛掉時，服務會被一起拖死。**
+「稽核資料庫連不上」那個場景本來是要驗證 fail-closed 行為的，結果量出來的第一版是：
+`/api/health` **直接拋例外**（500），chat 的 p50 是 **16.7 秒**。三個各自獨立的問題：
+
+- `PostgresAuditSink` 在建構時就連線 → 資料庫掛了整個 app 起不來。改成 lazy
+- `is_available()` 每次呼叫都去撞一次連線逾時 → health 變成 10.4 秒。改成背景探測、health 讀快取
+- 背景探測**持有 health 需要的那把鎖** → health 還是 8.9 秒。探測改用獨立的 `_probe_lock`
+
+修完之後：health 回 `degraded`（不是死掉），chat 在 43 ms 回結構化 503。
+**這三個問題全部只有在真的把資料庫關掉、並且同時施加負載時才會顯現**——
+單元測試 mock 掉連線，量不到任何一個。
+
+**4. `/api/health` 不該因為下游壞掉而失敗。** 健康檢查回 500 的話，
+監控只看得到「連不上」，分不出「服務死了」與「資料庫死了」，而這兩件事的處理方式完全不同。
+所以 `AuditSink` 加了一個**不拋例外**的 `is_available()`，health 回 `degraded` + `audit_available: false`。
+
+**5. 預算讀不到時 fail closed。** 稽核資料庫連不上 → 讀不到今天花了多少 →
+**算不出花了多少就不要再花**。回 503（下游暫時不可用）不是 500（這個服務出錯），
+`error_code: budget_unavailable`。這和 `estimate_cost_usd` 缺單價時 raise 是同一個原則。
+
+**已知限制（誠實記錄）**
+
+- **端到端那一軌沒有量。** 真實 LLM 供應商的延遲與花費需要真的呼叫 API、花真錢，
+  且要先選 provider。harness 已就緒，只差一道指令。
+  README 裡所有效能數字都屬於服務層那一軌，兩軌不可混用
+- 全部量測都在單一開發機、單一 uvicorn worker 上跑，不是生產環境的數字
+- 故障注入用的是 mock provider 的注入旋鈕，不是真的把 Gemini 打掛
+
+**下一步**
+
+- 端到端取樣（需要授權花費與選 provider）
+- 全部變更仍在工作目錄，未 commit（Contributors 只能有一人，git 操作一律由使用者執行）
+
+---
+
 ## 2026-07-25（續三）— 營運層 Phase 4（可信任的稽核軌跡）
 
 **這個 Phase 的命題**

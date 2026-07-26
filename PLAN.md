@@ -96,7 +96,7 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   產出沒人讀的 metrics 只是換個形式的堆技術。
   **驗收**：四層 span 鏈路（HTTP → agent → 工具 → provider）在 Jaeger 上看得到；
   **PII grep 斷言測試通過**（實際跑完整請求，捕捉所有日誌與 span 輸出後 grep 真實病患值）；
-  跟 Phase 0 基線比 overhead。設計取捨見 [ADR 0005](decisions/0005-observability-without-leaking-pii.md)。
+  跟 Phase 0 基線比 overhead。設計取捨見 [ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)。
   **過程中抓到的真實洩漏**：PII 斷言測試第一次跑就發現 `httpx` 把含 `patient_id` 的
   URL 記進日誌——不是我們寫的程式碼，而是接管 root logger 連帶接管了第三方函式庫的輸出。
   已把第三方 logger 預設壓到 WARNING。
@@ -106,7 +106,7 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   Phase 1 的預算計數。已補上 `guardrails.timeout_seconds` 只涵蓋 loop 累計的缺口——**單次呼叫
   逾時下在 SDK 的 HTTP client**（真的中止請求），不是在外層包執行緒（那只會把逾時變成
   threadpool 洩漏，而 threadpool 飽和正是 Phase 0 量到的瓶頸）。
-  設計取捨見 [ADR 0006](decisions/0006-resilience-fail-fast-not-fail-hard.md)。
+  設計取捨見 [ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)。
   **驗收**：注入連續失敗 → 熔斷開啟 → 結構化拒答；半開探路成功 → 恢復；半開只放一個請求出去；
   重試成本有記（附對照組：沒重試時只記一筆）；**熔斷狀態變化在 Phase 2 的 trace 上看得到**——
   實測三次請求但 `provider.start` 只出現兩次，第三次因熔斷根本沒打出去。
@@ -117,7 +117,7 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   （c）**併發下不會遺失嗎**——Postgres 用 advisory lock、JSONL 用 threading.Lock + 單次原子寫入。
   **必須可選**：無 `DATABASE_URL` 即退回檔案模式，`/api/health` 回報 `audit_backend`。
   **不把 FHIR 資料搬進資料庫**——資料庫裡只有稽核軌跡與預算計數。
-  設計取捨見 [ADR 0007](decisions/0007-trustworthy-audit-trail.md)。
+  設計取捨見 [ADR 0007](docs/decisions/0007-trustworthy-audit-trail.md)。
   **驗收**：偽造草稿被擋且什麼都沒寫進去；竄改／刪除／重排任一列都能偵測**並指出是哪一列**
   （對真的 Postgres 直接下 UPDATE 也驗過）；併發 40 筆寫入鏈不分叉；拔掉 `DATABASE_URL`
   仍能啟動並退回檔案模式；預算計數在 DB 模式下重啟不歸零。
@@ -125,10 +125,15 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   **實測抓到的 bug**：原本用 `SELECT ... FOR UPDATE` 鎖鏈尾，看起來合理但擋不住
   「另一個交易在它後面插入新列」——真的跑 Postgres 才撞出 `UniqueViolation`。已改用
   advisory lock。
-- [ ] **Phase 5 — 最終負載測試與對照**
-  重跑 Phase 0 的矩陣（同樣的 mock 延遲），產出前後對照表：每個控制項讓 p50/p95/p99 各增加多少。
-  **兩軌數字分清楚不混用**：服務層 overhead（mock，c1→c64）與端到端實測（真 provider，少量樣本，
-  明寫樣本數與花費）。故障注入場景表。
+- [x] **Phase 5 — 最終負載測試與對照**（2026-07-26 完成，端到端那一軌除外）
+  重跑完整矩陣並產出**四階段**前後對照表（基線 / ＋守門 / ＋觀測 / ＋韌性稽核），
+  表格由 `scripts/compare_loadtests.py` 產生，數字不手打。
+  **故障注入場景表**：五個場景各自一邊打爆 `/api/chat`、一邊固定速率打 `/api/health`，兩者延遲分開記錄。
+  **這補上了 Phase 3 那個原本只有單元測試支持的宣稱**——沒有熔斷時（provider 只是很慢、不失敗，
+  所以熔斷不會開）health 的 p95 是 **5775 ms**，熔斷開啟時是 **126 ms**。那個「沒有熔斷的對照組」
+  是必要的：沒有它，「health 沒被拖慢」可能只是負載不夠。
+  **尚未完成**：端到端那一軌（真 provider 少量取樣）需要花真錢且要選 provider，留待授權後執行。
+  README 已依七點清單改寫，並標明該軌未執行。
 
 ## 4. 架構
 

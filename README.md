@@ -7,7 +7,8 @@
 LLM 不直接接觸資料庫、不憑記憶回答病患事實——每個病患事實都由 deterministic tool 回傳並附
 FHIR `resourceType/id` 證據；資料不足時明確拒答。
 
-**專案狀態**：M0–M7 全部完成（完整 milestones 見 [PLAN.md](PLAN.md)、開發過程與真實測試輸出見 [docs/PROGRESS.md](docs/PROGRESS.md)）
+**專案狀態**：M0–M7 完成，並補上營運層（認證/限流/預算、可觀測性、韌性、可信任的稽核軌跡）。
+完整 milestones 見 [PLAN.md](PLAN.md)、開發過程與真實測試輸出見 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ---
 
@@ -49,7 +50,7 @@ flowchart LR
     TR --> FS[FHIRStore interface]
     FS --> LB[LocalBundleFHIRStore<br/>本地 JSON bundles]
     FS -.預留.-> HAPI[HAPI FHIR adapter]
-    API --> AUD[(Audit Log JSONL<br/>propose_care_note 人工確認後)]
+    API --> AUD[(稽核軌跡<br/>草稿簽章 + hash chain<br/>Postgres 或 JSONL)]
 ```
 
 **資料流**：使用者提問 → agent loop 規劃 tool calls → 工具查 `FHIRStore` → 帶 `evidence[]` 的結構化結果回傳給 LLM → LLM 組合中文回答（含 evidence/limitations/cost）→ 前端呈現 + 證據抽屜。**LLM 從頭到尾看不到底層資料庫**，只看到工具回傳的、已經 schema 化的 JSON 結果。
@@ -61,12 +62,12 @@ flowchart LR
 | **LLM 不直接碰資料庫** | LLM 只能透過 5 個 Pydantic v2 嚴格 schema 的唯讀工具取得資料，工具內部才呼叫 `FHIRStore`；LLM 永遠看不到原始 FHIR bundle |
 | **每個事實都要有出處** | 工具回傳值一律附 `evidence[]`（`resourceType`/`id`）；eval 的 citation validity 指標會直接對照真實 store 驗證每筆引用是否存在 |
 | **預設唯讀，寫入類工具不在 agent loop 內** | `agent/loop.py` 的工具 allowlist（`tools/registry.py` 的 `READ_ONLY_TOOLS`）裡沒有任何 write 工具；`propose_care_note` 只產草稿，**不在這份清單裡**，agent 迴圈本身呼叫不到它 |
-| **草稿 → 人工確認 → 本地 audit log，永不寫回 FHIR** | UI 明確確認後才呼叫 `confirm_and_log`，寫入本地 `audit_log/care_notes.jsonl`；沒有任何路徑會寫回 FHIR store |
+| **草稿 → 人工確認 → 稽核軌跡，永不寫回 FHIR** | UI 明確確認後才呼叫 `confirm_and_log`。**先驗草稿簽章再寫**，寫入 append-only 且帶 hash chain 的稽核軌跡（有 `DATABASE_URL` 走 Postgres，否則 JSONL）；沒有任何路徑會寫回 FHIR store |
 | **資料不足 → 結構化拒答，不硬答** | 回應契約有 `refused: bool` 欄位；查無資料時明確拒答而非编造 |
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界；eval 內建 injection 題型驗證（見下方 eval 結果） |
 | **病患範圍由伺服器端注入，LLM 無法竄改** | `patient_id` 從 LLM 看得到的工具 schema 中移除（[`tools/registry.py:llm_facing_schema`](src/fhir_copilot/tools/registry.py)），由 agent loop 依對話 session 直接注入工具呼叫（見 [ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
 | **Secret 只從環境變數來** | `.env`、`data/raw`、`data/processed` 永不進 git（`.gitignore`） |
-| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；單次 provider 呼叫本身目前沒有逾時保護 |
+| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；**單次 provider 呼叫的逾時另外設在 [`configs/ops.yaml`](configs/ops.yaml)**，並下到 SDK 的 HTTP client（真的中止請求，不是「不等它」） |
 
 完整 threat model 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)。
 
@@ -104,122 +105,31 @@ flowchart LR
 
 跑完整 220 題全量比較：`uv run python scripts/run_eval.py --provider gemini --full-eval --pace-seconds 10`（Gemini 免費層 15 req/min，需要 pacing，約需 37 分鐘）。mock provider 220 題全量已跑通（tool-selection 85.0%、citation validity 100.0%，見 [docs/PROGRESS.md](docs/PROGRESS.md)）。
 
-## 營運控制
+## 營運層：三個事實，三組控制
 
-這個服務處理病患資料、而且每次問答都花真錢，所以有一層營運控制。
-**每個控制項都從一個具體事實推導出來，講不出領域理由的就不做**
+這個服務處理病患資料，而且每次問答都花真錢。**每個控制項都從一個具體事實推導出來，
+講不出領域理由的就不做**——那是防止這種專案變成「堆技術」的唯一辦法
 （見 [ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)）。
 
 | 事實 | 控制 | 實際證據 |
 |---|---|---|
-| `/api/chat` 每次呼叫都花真錢，端點原本完全開放 | API key 認證（header `X-API-Key`，金鑰只從環境變數來） | 無 key 得 401、錯 key 得 401，測試在 [`tests/test_auth.py`](tests/test_auth.py) |
-| 一個呼叫者不該把服務吃光 | 每 key token bucket 限流 | 超過設定速率得 429 + `Retry-After`，測試在 [`tests/test_rate_limit.py`](tests/test_rate_limit.py) |
-| 會被燒光的是同一個 API 帳號的額度 | 全域每日成本上限（沿用 `estimate_cost_usd`，缺單價照樣 raise） | 超過上限得 429 + `error_code: budget_exceeded`（不是 500），測試在 [`tests/test_budget.py`](tests/test_budget.py) |
+| `/api/chat` 每次呼叫都花真錢，而端點原本完全開放 | API key 認證、每 key token bucket 限流、全域每日成本上限 | 無 key／錯 key 得 401；超速得 429 + `Retry-After`；超預算得 429 + `error_code: budget_exceeded`（不是 500）。[`test_auth.py`](tests/test_auth.py)、[`test_rate_limit.py`](tests/test_rate_limit.py)、[`test_budget.py`](tests/test_budget.py) |
+| 日誌與 trace 會經手病患資料 | PII 遮蔽（`patient_id` 雜湊、自由文字只記長度、病患姓名完全不記）；request ID；四層 span 鏈路；`/metrics` | **grep 斷言測試**：實際跑完整條請求，捕捉所有日誌與 span，斷言真實病患姓名／原始文字／完整 id 都不在裡面。[`test_pii_redaction.py`](tests/test_pii_redaction.py)、[`test_observability.py`](tests/test_observability.py) |
+| 外部 LLM provider 會超時、會 429、會回垃圾 | 單次呼叫逾時（下在 SDK，真的中止請求）、指數退避重試、熔斷 | 熔斷開啟後 provider 不再被呼叫（trace 上少一個 span）；重試成本記進預算。[`test_resilience.py`](tests/test_resilience.py) |
+| 照護記錄的稽核軌跡是「誰對哪位病患記了什麼」的憑據 | 草稿 HMAC 簽章 + hash chain + 併發安全的 append | 偽造草稿被擋且什麼都沒寫進去；竄改／刪除／重排任一列都能**指出是哪一列**。[`test_audit_trail.py`](tests/test_audit_trail.py)、[`test_audit_postgres.py`](tests/test_audit_postgres.py) |
 
-速率、上限等參數全部在 [`configs/ops.yaml`](configs/ops.yaml)，不寫死在程式。
-`/api/health`、`/api/patients*`、`/api/providers` 不受保護——唯讀端點不花錢也不寫入，
-沒有理由擋；健康檢查被認證擋住的話，它就不再是健康檢查了。
+參數全部在 [`configs/ops.yaml`](configs/ops.yaml)，不寫死在程式。
+`/api/health`、`/api/patients*`、`/api/providers` 不受守門保護——唯讀端點不花錢也不寫入，
+沒有理由擋；**健康檢查被認證擋住的話，它就不再是健康檢查了。**
 
-### 這些控制的代價（實測，不是估計）
+設計取捨見 [ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（控制項從領域推導）、
+[ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)（可觀測性不外洩 PII）、
+[ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)（韌性：快速失敗）、
+[ADR 0007](docs/decisions/0007-trustworthy-audit-trail.md)（可信任的稽核軌跡）。
 
-加控制項之前先量了基線，加完之後用同一組參數重跑一次
-（[baseline](reports/loadtest/baseline-20260725.md) vs
-[with-controls](reports/loadtest/with-controls-20260725.md)）：
+### 稽核軌跡為什麼需要三件事一起
 
-| 加了什麼 | `/api/chat` c1 的 p50 | 每請求的固定成本 |
-|---|---:|---|
-| 什麼都沒加（[baseline](reports/loadtest/baseline-20260725.md)） | 603.0 ms | — |
-| ＋認證/限流/預算（[with-controls](reports/loadtest/with-controls-20260725.md)） | 604.1 ms | 約 **+1.0 ms** |
-| ＋可觀測性（[with-observability](reports/loadtest/with-observability-20260725.md)） | 603.7 ms | 約 **+0.27 ms** |
-
-- 對 `/api/chat` 這兩層加起來**量不出來**：約 1.3 ms 埋在 603 ms 的請求裡（**+0.2%**）
-- 對本來只要 0.55 ms 的唯讀端點，可觀測性那 0.27 ms 是 **+50%**
-  （`/api/health` 吞吐從 1632 降到 1140 rps）。絕對值很小但比例很大——
-  這是誠實的代價，不是可以四捨五入掉的東西
-- 併發拉高後固定成本會透過排隊放大（c64 約 +20 ms），那不是單次成本變大
-- 已知的最佳化路徑：`BaseHTTPMiddleware` 換成純 ASGI middleware。歸因量測顯示
-  存取日誌只佔 0.11 ms，其餘 0.22 ms 來自 middleware、span 與指標
-
-**這些數字怎麼保證可信**：三個不受改動影響的端點是**內建的控制組**，它們的差值在
-每個併發等級都必須彼此吻合（實測 c1 是 +0.28/+0.26/+0.29 ms）。這個機制在這個專案裡
-抓到過兩次量測污染——都是量測期間機器沒有真的閒置，詳見
-[`docs/PROGRESS.md`](docs/PROGRESS.md)。
-
-**這組數字是服務層 overhead**（FastAPI + 工具執行 + FHIR store），用 mock provider
-加固定 300 ms 延遲模擬，**不含真實 LLM 供應商的延遲**。
-
-### 已知的架構瓶頸（量出來的）
-
-7 個端點全部是同步 `def`，FastAPI 會丟進 anyio threadpool（預設 40 threads），
-而 provider 呼叫是阻塞的。所以 `/api/chat` 的吞吐上限是
-`40 threads ÷ 0.6 s = 66.7 rps`——基線在 c64 實測 **64.6 rps**，p50 從 c32 的 609 ms
-跳到 952 ms。這不是「效能不好」，是可解釋、可預測的架構特性；
-要提高得改 async provider 或加 worker，兩者都還沒做。
-
-### 降級行為
-
-沿用「provider 缺金鑰自動退回 mock」的哲學：**不會因為少一個環境變數就起不來**，
-但 `/api/health` 會誠實回報現在少了什麼保護。
-
-| 情況 | 行為 |
-|---|---|
-| 沒設 provider 金鑰 | 自動退回 mock，`/api/health` 回 `demo_mode: true` |
-| 沒設 `FHIR_COPILOT_API_KEYS` | 認證層等於關閉，一律當 `anonymous` 放行；`api_key_count: 0` |
-| 設了金鑰但請求帶錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
-| `FHIR_COPILOT_REQUIRE_AUTH=true` 但沒有任何金鑰 | **Fail closed**（全部擋下）。這是設定矛盾，fail open 等於「以為有保護，其實沒有」 |
-
-**限流與預算即使在 demo mode 也生效**——沒開認證不代表不會花錢。
-
-### 可觀測性
-
-| 事實 | 控制 | 實際證據 |
-|---|---|---|
-| 日誌與 trace 會經手病患資料 | PII 遮蔽：`patient_id` 雜湊、自由文字只記長度、病患姓名完全不記 | **grep 斷言測試**：實際跑完整條請求，捕捉所有日誌與 span，斷言真實病患姓名／原始文字／完整 id 都不在裡面（[`tests/test_pii_redaction.py`](tests/test_pii_redaction.py)） |
-| 出事時要查得動是哪一次請求 | `X-Request-ID`（沿用呼叫端帶進來的，沒有就產生），寫進該請求的每一行日誌 | [`tests/test_observability.py`](tests/test_observability.py) |
-| 要看得到錢花在哪、誰在拒答 | `/metrics`（Prometheus）：請求數、延遲分佈、provider 錯誤、拒答數、當日累計成本 | 同上 |
-
-完整 span 鏈路（四層）：
-
-```
-POST /api/chat
-  └── agent.answer
-        ├── provider.start
-        ├── tool.list_active_medications
-        └── provider.continue
-```
-
-**可觀測性必須有消費端**——產出 trace 卻沒地方看，只是換個形式的堆技術。所以兩種都有：
-
-- **可以自己跑起來看**：`docker compose --profile dev up` 起 Jaeger（`profiles: ["dev"]`，
-  正式 image 完全不含它），瀏覽 <http://localhost:16686>
-- **不跑任何東西也看得到**：[`reports/traces/`](reports/traces/) 有 commit 進 repo 的完整 trace JSON
-
-設計取捨（為什麼不用 auto-instrumentation、為什麼 `/metrics` 不套認證、遮蔽為什麼用白名單）
-見 [ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)。
-
-### 韌性
-
-| 事實 | 控制 | 實際證據 |
-|---|---|---|
-| 外部 LLM provider 會超時、會 429、會回垃圾 | 單次呼叫逾時（下在 SDK，真的中止請求）＋ 指數退避重試（只重試暫時性失敗） | [`tests/test_resilience.py`](tests/test_resilience.py) |
-| provider 掛掉時每個請求都佔住一個 threadpool slot 直到逾時 | 熔斷：連續失敗達閾值就快速失敗，不再打 provider | 同上；trace 實測三次請求但 `provider.start` 只出現兩次 |
-| 重試會放大成本，而失敗的嘗試可能已經產生 token | 每次重試向每日預算補記估算成本 | 同上（附對照組：沒重試時只記一筆） |
-
-**為什麼熔斷的重點是 threadpool 而不是省錢**：7 個端點全是同步 `def`，跑在 anyio
-threadpool 的 40 個 slot 上。provider 掛掉時只要每秒 4 個請求，不到 10 秒整個
-threadpool 就被卡死的請求佔滿——**那時候連 `/api/health` 都排不進去，監控會在服務
-其實還活著的時候誤判成整台死亡**。
-
-provider 不可用時使用者拿到的是**結構化拒答**（HTTP 200 + `refused: true`），不是 500。
-前端會把它標成「服務暫時無法使用」而不是「拒答」——後者會讓使用者以為是自己的問題被
-回絕，而不是系統暫時壞掉。
-
-設計取捨見 [ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)。
-
-### 可信任的稽核軌跡
-
-照護記錄的稽核軌跡是「誰在什麼時候對哪位病患記了什麼」的憑據。**「值得信任」是一個
-命題，需要同時回答三件事**——只做其中兩件，會得到兩個各自不完整的機制：
+「這份軌跡值得信任」是一個命題，不是三個功能。只做其中兩件，會得到兩個各自不完整的機制：
 
 | 問題 | 沒做的話會怎樣 | 機制 |
 |---|---|---|
@@ -238,40 +148,111 @@ $ uv run python scripts/verify_audit_chain.py
   - 第 2 列(sequence=1):內容被改過(row_hash 應為 900e2fc8ab40…,實際是 53da2691bbc8…)
 ```
 
-**hash chain 放在紀錄模型層而不是資料庫層**：否則「無 `DATABASE_URL` 就退回檔案模式」
-這條降級路徑會同時退掉防竄改——而那個降級是刻意保留的產品特性，不該是安全破口。
+## 效能：兩軌數字，不要混用
 
-**資料庫是可選的**：無 `DATABASE_URL` 就用 JSONL，`/api/health` 回報 `audit_backend`。
-但**設了 URL 卻沒裝驅動時刻意讓它炸掉**，不默默退回檔案模式——稽核軌跡的位置不能靠猜。
-資料庫裡只有稽核軌跡與預算計數，**FHIR 資料不進資料庫**。
+| 軌 | 量什麼 | 用什麼 | 狀態 |
+|---|---|---|---|
+| **服務層 overhead** | FastAPI + 路由 + 工具執行 + FHIR store | mock provider＋固定 300 ms 延遲 | 已完成，見下 |
+| **端到端** | 含真實 LLM 供應商延遲與花費 | 真 provider，少量取樣 | **尚未執行**（見已知限制） |
 
-代價：image 從 500 MB 增為 527 MB（+5.4%，來自 `psycopg`）。
-設計取捨與已知限制見 [ADR 0007](docs/decisions/0007-trustworthy-audit-trail.md)。
+以下**全部屬於第一軌**，不含任何真實供應商的延遲。
 
-### 已知限制（營運層）
+### 這些控制的代價（實測，不是估計）
 
-- 限流與預算計數都在**單一 process 的記憶體**裡。多實例部署時每個實例各有一份計數，
-  限流會變成 N 倍；服務重啟時預算計數歸零。`/api/health` 回報 `budget_counting_since`，
-  讓看的人知道這個數字是從什麼時候起算的
-- 前端的 API key 存在 `localStorage`，由使用者自己貼入。這不比 build-time env「更安全」，
-  但它誠實：金鑰是這個瀏覽器的使用者提供的，不是我們烤進公開 JS bundle 發佈出去的
-- 匿名呼叫者依來源 IP 分桶，而 IP 取自 `X-Forwarded-For`（反向代理後面拿不到真實
-  remote address）。**那個 header 可以偽造**，所以限流對有心人是繞得過的——擋錢的
-  主防線是全域每日預算上限，它不分身分、偽造不了；限流管的是公平性，不是防惡意
-- `patient_id` 的雜湊沒有加 salt。對合成資料足夠；換成真實資料時已知 id 集合可被暴力反查
+四個階段各量一次，同一組參數。完整表格由程式產生：
+[`reports/loadtest/comparison.md`](reports/loadtest/comparison.md)。
+
+`/api/chat` c1（無排隊）的 p50：
+
+| 階段 | p50 |
+|---|---:|
+| 基線（什麼都沒加） | 603.0 ms |
+| ＋認證/限流/預算 | 604.1 ms |
+| ＋可觀測性 | 603.7 ms |
+| ＋韌性/稽核 | 609.2 ms |
+
+**整層營運控制對唯讀端點的每請求成本是 +0.2 ～ +0.5 ms**（`/api/patients` 0.55 → 0.80 ms、
+`/api/summary` 0.86 → 1.08 ms）。對 `/api/chat` 則量不出來——那條路徑的 600 ms 是
+`time.sleep` 造出來的，而 Windows 的排程粒度是毫秒級，所以 chat 上幾毫秒的差異
+**落在儀器的雜訊裡，不是服務的**。
+
+**這些數字怎麼保證可信**：三個不受守門保護的端點是**內建的控制組**，它們在各階段之間的
+差值必須彼此吻合（實測 c1 是 +0.25／+0.21／+0.47 ms）。這個機制在這個專案裡
+**抓到過兩次量測污染**——都是量測期間機器沒有真的閒置，作廢重跑。詳見
+[`docs/PROGRESS.md`](docs/PROGRESS.md)。
+
+代價的絕對值很小，但比例不小：可觀測性那 0.27 ms 對本來只要 0.55 ms 的
+`/api/health` 是 +50%。**寫出來比不寫強，即使數字不好看。**
+已知的最佳化路徑：`BaseHTTPMiddleware` 換成純 ASGI middleware（歸因量測顯示存取日誌
+只佔 0.11 ms，其餘來自 middleware、span 與指標）。
+
+### 已知的架構瓶頸（量出來的）
+
+7 個端點全部是同步 `def`，FastAPI 丟進 anyio threadpool（預設 40 threads），
+而 provider 呼叫是阻塞的。所以 `/api/chat` 的吞吐上限是 `40 ÷ 0.6 s ≈ 66.7 rps`——
+基線在 c64 實測 **64.6 rps**，p50 從 c32 的 609 ms 跳到 952 ms。
+
+這不是「效能不好」，是可解釋、可預測的架構特性。**而它正是熔斷存在的理由**（見下）。
+
+## 故障注入：壞掉的時候會怎樣
+
+完整表格：[`reports/loadtest/fault-injection-20260725.md`](reports/loadtest/fault-injection-20260725.md)。
+
+每個場景都**一邊用 48 併發打 `/api/chat`，一邊以固定 5 req/s 打 `/api/health`**，
+兩者的延遲分開記錄。要看的是 health——如果它在下游壞掉時被拖慢，那就代表
+threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判成整台死亡**。
+
+| 場景 | chat p50 | chat 結果 | **health p95** |
+|---|---:|---|---:|
+| 一切正常（對照組） | 654 ms | 正常回答 | 606.9 ms |
+| **provider 持續失敗** | 54 ms | 100% 結構化拒答 | **126.3 ms** |
+| provider 間歇失敗（50%） | 2454 ms | 26% 拒答（重試吸收掉一半） | 527.3 ms |
+| **provider 極慢、熔斷不開**（對照組） | 6069 ms | 全部卡住 | **5775.4 ms** |
+| 稽核資料庫連不上 | 43 ms | 100% 結構化 503（fail closed） | 1313.1 ms |
+
+**熔斷有沒有用，靠的是那兩列的對比**：沒有熔斷時（provider 只是很慢、不失敗，
+所以熔斷不會開）health 的 p95 是 **5.8 秒**——threadpool 確實被佔滿了。
+熔斷開啟時是 **126 ms**，比一切正常時（607 ms）還快，因為 chat 在 54 ms 就返回、
+不再佔住 slot。
+
+那個「沒有熔斷的對照組」是必要的：沒有它的話，「health 沒被拖慢」可能只是負載不夠。
+
+## 降級行為
+
+沿用「provider 缺金鑰自動退回 mock」的哲學：**不會因為少一個環境變數就起不來**，
+但 `/api/health` 會誠實回報現在少了什麼保護。
+
+| 情況 | 行為 |
+|---|---|
+| 沒設 provider 金鑰 | 自動退回 mock，`demo_mode: true` |
+| 沒設 `FHIR_COPILOT_API_KEYS` | 認證層等於關閉，一律當 `anonymous` 放行 |
+| 設了金鑰但請求帶錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
+| `FHIR_COPILOT_REQUIRE_AUTH=true` 但沒有任何金鑰 | **Fail closed**。設定矛盾時 fail open 等於「以為有保護，其實沒有」 |
+| 沒設 `DATABASE_URL` | 稽核軌跡用 JSONL 檔案模式，`audit_backend: jsonl` |
+| 設了 `DATABASE_URL` 但沒裝驅動 | **明確失敗**。默默退回檔案會讓人以為紀錄進了資料庫——稽核軌跡的位置不能靠猜 |
+| 資料庫連不上 | `/api/health` 回 `status: degraded` + `audit_available: false`（**不是死掉**）；唯讀端點正常；`/api/chat` 回 503 fail closed |
+| provider 連續失敗 | 熔斷開啟，回結構化拒答（HTTP 200 + `refused`），不是 500 |
+
+**限流與預算即使在 demo mode 也生效**——沒開認證不代表不會花錢。
+
+## 已知限制（營運層）
+
+- **端到端那一軌還沒量**。真實 LLM 供應商的延遲與花費需要真的呼叫 API，
+  尚未執行；README 裡所有效能數字都屬於服務層那一軌
+- 限流、預算計數、熔斷器狀態都在**單一 process 的記憶體**裡（預算在資料庫模式下例外）。
+  多實例部署時每個實例各算各的
+- 匿名呼叫者依來源 IP 分桶，IP 取自 `X-Forwarded-For`，**那個 header 可以偽造**。
+  擋錢的主防線是每日預算上限，它不分身分；限流管的是公平性，不是防惡意
+- 稽核鏈**抓不出「整條鏈被重算」**——有寫入權限的人可以重建整條鏈。
+  這個限制寫成了一個會通過的測試，不只寫在文件裡
+- 檔案模式的稽核軌跡**多 process 不安全**（鎖是 process 內的）
+- 草稿簽章金鑰未設定時是 process 臨時金鑰，重啟後舊草稿失效；多實例**必須**設共用金鑰
+- `patient_id` 的雜湊沒有加 salt。對合成資料足夠，換真實資料時已知 id 集合可被暴力反查
+- 舊的 JSONL 稽核檔（Phase 4 之前、沒有 hash chain 的格式）**不會自動遷移**
 - 日誌只輸出到 stdout，沒有集中式收集；`/metrics` 需要自己接 Prometheus
-- 熔斷器狀態也在單一 process 的記憶體裡。多實例部署時每個實例各自判斷，
-  provider 掛掉時每個實例都要先各自失敗 N 次才會熔斷
-- **「provider 掛掉時 threadpool 不會被佔滿」這個命題還沒有負載測試數字支持**。
-  故障注入目前只驗到單元與整合測試層級，負載下的行為留給後續的故障注入場景表
-- 稽核鏈**抓不出「整條鏈被重算」**——有寫入權限的人可以重建整條鏈。要防這個需要把
-  鏈尾定期送到這個系統改不到的地方。這個限制寫成了一個會通過的測試，不只寫在文件裡
-- 檔案模式的稽核軌跡**多 process 不安全**（鎖是 process 內的）。那正是 Postgres 模式
-  存在的理由
-- 草稿簽章金鑰未設定時是 process 臨時金鑰，重啟後先前發出的草稿會失效；
-  多實例部署**必須**設共用金鑰
-- 舊的 JSONL 稽核檔（Phase 4 之前、沒有 hash chain 的格式）**不會自動遷移**。
-  新格式從新檔案開始——把沒有鏈的舊紀錄塞進鏈裡，等於宣稱它們有從來不存在的保證
+- 沒有 Jaeger UI 的截圖（開發機的瀏覽器 pane 無法 compositing），改用 commit 進 repo 的
+  trace JSON 當證據
+
 
 ## 成本
 
@@ -279,7 +260,7 @@ $ uv run python scripts/verify_audit_chain.py
 - 本次 M6 小樣本比較（兩模型各 30 題）實際總花費：**$0.058**
 - 單價設定於 [`configs/pricing.yaml`](configs/pricing.yaml)，不寫死在程式；模型 id 對應於 [`configs/models.yaml`](configs/models.yaml)
 
-## 已知限制
+## 已知限制（模型與資料）
 
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
 - 目前僅完成 220 題全量的 mock 版本 + 60 題（兩模型各 30）真實 API 小樣本比較，尚未跑完整 220 題的雙模型真實比較
@@ -293,8 +274,12 @@ $ uv run python scripts/verify_audit_chain.py
 - **前端**：React 19 + Vite 8 + TypeScript 6，`vite build` 靜態檔由 FastAPI 同一 process serve
 - **LLM providers**：Gemini（`google-genai` SDK，手動 function-calling 迴圈）、OpenAI（Responses API）、Mock（deterministic，CI/demo 用）
 - **資料層**：`FHIRStore` protocol + `LocalBundleFHIRStore`（讀本地 Synthea JSON bundles），預留 HAPI FHIR adapter 介面
+- **營運層**：OpenTelemetry（tracing）、prometheus-client（`/metrics`）、psycopg（可選的 Postgres 稽核後端）
 - **品質工具**：ruff、mypy（strict）、pytest、pre-commit（`core.hooksPath`，見 [ADR 0002](docs/decisions/0002-python-313.md)）
-- **容器化**：multi-stage Dockerfile（Node build → Python 3.13-slim runtime），HF Docker Space 相容（UID 1000、`EXPOSE 7860`）
+- **量測**：k6（併發矩陣與故障注入），腳本與原始輸出都在 repo 內
+- **容器化**：multi-stage Dockerfile（Node build → Python 3.13-slim runtime），HF Docker Space 相容（UID 1000、`EXPOSE 7860`）；
+  `docker compose` 的 `dev` profile 附 Jaeger、`db` profile 附 Postgres，**兩者都不進 production image**
+- **CI**：ubuntu + windows 雙 OS matrix、image build 與容器 smoke test、帶 Postgres service container 的整合測試
 
 ## 開發
 
@@ -366,12 +351,14 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 2. **誠實面對指標的侷限,而不是選擇性展示漂亮數字**——Field exact match 只有 54% 時沒有藏起來或調鬆比對邏輯讓數字變好看,而是人工核閱逐字稿找出真正原因(語言改寫),誠實記錄「這個指標低估真實品質」。Injection resistance 判準本身有 bug(把拒絕句裡提到違禁詞誤判成服從)時,修好之後仍然附上全部逐字稿讓讀者自己判斷,不是只信自動聚合的百分比。
 3. **安全邊界是架構層,不是 prompt 層**——`patient_id` 從 LLM 看得到的 tool schema 裡直接拿掉,讓它連「選錯病患」的選項都沒有;write 類工具根本不在 agent loop 的 allowlist 裡,不是靠 prompt 說「不要寫入」。
 4. **工程紀律**——deterministic eval case 生成(不人工標註、可重現)、雙層預算守門(跑前估算 + 執行中累計)、每個 milestone 都有真實測試輸出佐證(不宣稱未量測的數字)、ADR 記錄重大技術決策與踩過的坑(如 Windows 中文路徑的 cp950 `.pth` 問題、Synthea 資料版本差異)。
-5. **完整交付**——不只是一個 notebook demo,而是 Docker 化、有 MODEL_CARD/DATA_CARD、有 CI、可以真的跑起來給人看的完整系統。
+5. **控制項從領域推導,不從技術清單推導**——營運層的每一項都對應一個具體事實(見「營運層」章節那張表),講不出領域理由的就不做。`/metrics` 的存取權杖是這裡面理由最弱的一項,README 也照實說了。
+6. **量測有對照組,而且承認被污染過**——負載測試刻意保留三個不受改動影響的端點當控制組,靠它抓到過兩次「量測期間機器不夠安靜」而作廢重跑;故障注入表也有一個「沒有熔斷」的對照組,否則「health 沒被拖慢」可能只是負載不夠。**能講出自己的數字為什麼可信,比數字好看重要。**
+7. **完整交付**——不只是一個 notebook demo,而是 Docker 化、有 MODEL_CARD/DATA_CARD、有雙 OS CI、有負載與故障注入證據、可以真的跑起來給人看的完整系統。
 
 ## 安全邊界文件
 
 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)：synthetic-only、read-only default、
-prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）、[ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（營運層控制項從領域推導）、[ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)（可觀測性不外洩 PII）、[ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)（韌性：快速失敗）。
+prompt injection 邊界、人工確認點。其他決策記錄：[ADR 0002](docs/decisions/0002-python-313.md)（Python 3.13 選型）、[ADR 0003](docs/decisions/0003-patient-scope-injection.md)（病患範圍伺服器端注入）、[ADR 0004](docs/decisions/0004-ops-controls-from-domain.md)（營運層控制項從領域推導）、[ADR 0005](docs/decisions/0005-observability-without-leaking-pii.md)（可觀測性不外洩 PII）、[ADR 0006](docs/decisions/0006-resilience-fail-fast-not-fail-hard.md)（韌性：快速失敗）、[ADR 0007](docs/decisions/0007-trustworthy-audit-trail.md)（可信任的稽核軌跡）。
 
 ## 授權
 
