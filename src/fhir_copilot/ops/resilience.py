@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -57,9 +58,27 @@ def is_retryable(exc: BaseException) -> bool:
     if any(token in name for token in ("timeout", "connection", "unavailable", "ratelimit")):
         return True
     text = str(exc).lower()
+    # **整個 5xx 都算暫時性**,不要逐一列舉狀態碼。
+    #
+    # 原本只列了 502/503,而端到端取樣時真實撞到的是 **504 DEADLINE_EXCEEDED**
+    # (上游自己的逾時,不是我們的)。504 沒被認出來就不重試,直接變成結構化拒答——
+    # 25 次取樣裡有 3 次,而那三次重試一下就會成功。
+    #
+    # 教訓:白名單列舉會漏,而漏掉的那個永遠是你沒想到的那個。這裡改成比對整個
+    # 5xx 區間,語意也才和 configs/ops.yaml 的註解(「5xx」)一致。
+    if re.search(r"(?:^|[^\d])5\d\d(?:[^\d]|$)", text):
+        return True
     return any(
         token in text
-        for token in ("timeout", "timed out", "temporarily", "rate limit", "429", "503", "502")
+        for token in (
+            "timeout",
+            "timed out",
+            "deadline",  # google 的 DEADLINE_EXCEEDED
+            "temporarily",
+            "overloaded",  # 「model is overloaded」是常見的暫時性回應
+            "rate limit",
+            "429",
+        )
     )
 
 

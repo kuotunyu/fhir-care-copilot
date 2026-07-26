@@ -100,10 +100,31 @@ class TestRetryableClassification:
             RuntimeError("request timed out"),
             RuntimeError("rate limit exceeded"),
             RuntimeError("upstream returned 503"),
+            # 端到端取樣真實撞到的:google 自己的逾時。原本只列 502/503,
+            # 504 沒被認出來就不重試,25 次取樣有 3 次直接變成拒答。
+            RuntimeError(
+                "504 DEADLINE_EXCEEDED. {'error': {'code': 504, "
+                "'message': 'Deadline expired before operation could complete.'}}"
+            ),
+            RuntimeError("500 INTERNAL"),
+            RuntimeError("The model is overloaded. Please try again later."),
         ],
     )
     def test_transient_failures_are_retryable(self, exc: Exception) -> None:
         assert is_retryable(exc) is True
+
+    @pytest.mark.parametrize("status", [500, 502, 503, 504, 529])
+    def test_every_5xx_is_retryable(self, status: int) -> None:
+        """**整個 5xx 都算暫時性**,不逐一列舉狀態碼。
+
+        白名單列舉會漏,而漏掉的那個永遠是你沒想到的那個——這次漏的是 504。
+        """
+        assert is_retryable(RuntimeError(f"{status} something went wrong upstream")) is True
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+    def test_4xx_is_not_retryable(self, status: int) -> None:
+        """對照組:4xx 是我們自己送錯,重試幾次都一樣,不該浪費配額。"""
+        assert is_retryable(RuntimeError(f"{status} bad request")) is False
 
     @pytest.mark.parametrize(
         "exc",
@@ -129,6 +150,39 @@ class TestRetry:
             call(wrap(provider, new_breaker(), max_retries=2))
 
         assert provider.calls == 3  # 首次 + 2 次重試
+
+    def test_real_504_from_upstream_is_retried_end_to_end(self) -> None:
+        """端到端取樣真實撞到的那個錯誤,整條鏈走一次。
+
+        ``is_retryable`` 單獨測過還不夠——這裡驗的是「這個形狀的例外從 provider
+        丟出來之後,ResilientProvider 真的會再打一次並成功」。
+
+        訊息是真實撈到的原文,不是我編的:25 次取樣裡 3 次撞到,而當時
+        ``is_retryable`` 只認 502/503,504 直接被判成不可重試 -> 結構化拒答。
+        """
+
+        class UpstreamDeadline(ScriptedProvider):
+            def _next(self) -> ProviderStep:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError(
+                        "504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': "
+                        "'Deadline expired before operation could complete.', "
+                        "'status': 'DEADLINE_EXCEEDED'}}"
+                    )
+                return ProviderStep(
+                    state=None,
+                    tool_calls=(),
+                    final_answer="ok",
+                    input_tokens=1,
+                    output_tokens=1,
+                )
+
+        provider = UpstreamDeadline([])
+        step = call(wrap(provider, new_breaker()))
+
+        assert step.final_answer == "ok"
+        assert provider.calls == 2, "504 必須被重試,不能直接放棄"
 
     def test_does_not_retry_deterministic_failures(self) -> None:
         """輸入有問題重打三次只是白花錢。"""
