@@ -7,6 +7,16 @@
 LLM 不直接接觸資料庫、不憑記憶回答病患事實——每個病患事實都由 deterministic tool 回傳並附
 FHIR `resourceType/id` 證據；資料不足時明確拒答。
 
+**線上 demo**：https://huggingface.co/spaces/steven0226/fhir-care-copilot
+（Hugging Face Docker Space，不需安裝，直接問答）
+
+> 兩個誠實的限制：免費層 **48 小時無人使用會 sleep**，第一位訪客要等容器喚醒；
+> 這個 demo 與開發、eval **共用同一份 Gemini 免費層額度**（500 req/day），
+> 額度用完時它不會壞掉，會回結構化拒答（`refused: true` + 原因），
+> 但那時看到的就不是真正的 agent 回答了。健康狀態隨時可查：
+> [`/api/health`](https://steven0226-fhir-care-copilot.hf.space/api/health)
+> ——`provider` 欄位是 `gemini` 才是真的在跑模型，`mock` 代表退回 demo mode。
+
 **專案狀態**：M0–M7 完成，並補上營運層（認證/限流/預算、可觀測性、韌性、可信任的稽核軌跡）。
 完整 milestones 見 [PLAN.md](PLAN.md)、開發過程與真實測試輸出見 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
@@ -370,11 +380,29 @@ image build 時已內建 100 位合成病患資料（build-time 執行 `download
 # dry-run(預設,不需金鑰,不會真的發布)
 uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot
 
-# 真的發布(需要 HF_TOKEN 環境變數,且要明確加 --execute)
-uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --execute
+# 把「會上傳的那一份」攤出來,拿去 docker build 驗證(不碰 HF)
+uv run python scripts/publish_to_hf.py --repo-id <username>/x --stage-dir /tmp/hf-stage
+
+# 真的發布(需要 HF_TOKEN,且要明確加 --execute)
+uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --load-env --execute \
+  --set-secret FHIR_COPILOT_PROVIDER=gemini --set-secret-from-env GEMINI_API_KEY
 ```
 
 腳本預設 **dry-run，不會自動發布**；只有明確加上 `--execute` 才會真的呼叫 HF API。
+
+三個實際部署時才會踩到、已經修掉並用測試釘住的坑：
+
+- **`FHIR_COPILOT_PROVIDER` 不能省。** `models.yaml` 的 `default_provider` 是 `mock`，
+  只設金鑰而不指定 provider，Space 會安靜地跑成 mock demo mode——**網頁看起來完全正常**。
+- **Secret 必須在上傳內容之前設定。** 上傳會觸發 HF 開始 build，build 出來的容器
+  帶的是當下存在的環境變數；先上傳後設 secret 等於保證第一個容器拿不到金鑰。
+  腳本現在的順序是 create → secrets → upload → `restart_space()`，
+  由 [`TestPublishOrdering`](tests/test_publish_to_hf.py) 釘住。
+- **`--set-secret-from-env` 優於 `--set-secret NAME=VALUE`**：後者會把金鑰留在
+  shell 歷史與 `ps` 的輸出裡。設定真的 API 金鑰時用前者，命令列上只出現名稱。
+
+**部署後務必確認 `/api/health` 的 `provider` 欄位不是 `mock`**——這是唯一能分辨
+「真的在跑模型」與「安靜退回 demo mode」的地方。
 
 ## 資料來源與授權
 

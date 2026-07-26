@@ -6,6 +6,134 @@
 
 ---
 
+## 2026-07-26（續七）— 部署到 Hugging Face Space，以及發布腳本自己保證會部署錯的兩個順序問題
+
+Space 已上線：`steven0226/fhir-care-copilot`（public、Docker SDK、free cpu-basic）。
+**但第一次部署成功之後，它跑的是假 agent。** 這一節記的主要是那個。
+
+### 一、部署前補的驗證：`--stage-dir`
+
+dry-run 回答的是「**會上傳哪些檔案**」，不是「**那些檔案 build 得起來**」。而本機
+`docker build` 一直是在完整 repo 上跑的——那裡有 `.git/`、`data/`、`app/node_modules/`，
+Space 上一個都沒有。**用完整 repo 驗證 Space 的 build，驗到的是另一條路徑。**
+
+新增 `--stage-dir`：把 `_simulate_upload()` 算出來的那一份實體攤出來（README 換成組好
+front-matter 的版本），拿去 `docker build`。刻意共用同一個 `_simulate_upload()`，
+不另寫一份複製規則——兩份規則遲早分岔，到時候「驗過的那一份」就不是「上傳的那一份」。
+
+實測輸出：
+
+```
+INFO 實際會上傳:185 個檔案,合計 1.8 MB
+INFO 已攤開 185 個檔案(1.8 MB)到 ...\hf-stage
+docker build -t fhir-care-copilot:hf <stage-dir>   → 成功(exit 0)
+```
+
+### 二、發布時撞到的三件事
+
+**(1) front-matter 的顏色值域**——`colorFrom: teal` / `colorTo: orange` 兩個都不合法：
+
+```
+Bad request:
+"colorFrom" must be one of [red, yellow, green, blue, indigo, purple, pink, gray]
+"colorTo" must be one of [red, yellow, green, blue, indigo, purple, pink, gray]
+```
+
+`PLAN.md` §7 記了「front-matter 需要 colorFrom/colorTo」，**但沒記值域**，所以這個錯
+一路活到真的發布那一刻。痛點不在顏色，在時機：**dry-run 全過，`--execute` 卻是在
+`upload_folder` 把 184 個檔案傳完之後才被 `/api/validate-yaml` 打回來**，留下一個
+半完成的 Space。那是純本地、零成本就檢得出來的東西。
+
+修法：`front_matter_problems()` 檢查值域、必要欄位、`app_port` 型別，**在任何上傳
+之前**跑。允許的顏色清單直接抄那句 400 錯誤訊息，不是查文件猜的。
+
+**(2) secret 與上傳的順序**——這個嚴重得多。原本的 `_execute_publish` 是
+先 `upload_folder`、後 `add_space_secret`。但**上傳會讓 HF 立刻開始 build，
+build 出來的容器帶的是「當下存在的」環境變數**。所以：
+
+- 全新部署 → 容器沒有 `GEMINI_API_KEY`
+- → `resolve_provider_name()` 退回 `mock`
+- → `get_provider_name()` 是 `@lru_cache`，固定到 process 結束
+
+**結果是全新部署必然跑成假 agent。** 實測 `/api/health` 回：
+
+```json
+{"provider":"mock","model_id":"mock-deterministic","demo_mode":true,
+ "patient_count":100,"budget_counting_since":"2026-07-26T12:29:07+00:00"}
+```
+
+`budget_counting_since` 早於 secret 設定時間，一眼看得出容器比 secret 老。
+
+**最糟的部分是它不會失敗。** Space 建起來了、100 位病患進去了、UI 完全正常、
+問答也答得出東西——只是那個 agent 是假的。沒去對 `provider` 欄位就不會發現。
+
+修法：secret 移到上傳之前；另外在最後明確 `restart_space()`——重跑時內容沒變不會
+觸發 build，舊容器會繼續用舊環境。
+
+**(3) 只設一把金鑰**——主金鑰當天配額已被 eval 用完，Space 上沒有備援可跳，
+於是退回結構化拒答。`models.yaml` 定義的三把備援金鑰要一起設成 Space Secret。
+
+### 三、順序測試實測確認過會紅
+
+`TestPublishOrdering` 不是裝飾。把 secret 搬回上傳之後，實測失敗訊息：
+
+```
+AssertionError: secret 必須在上傳之前設定,實際順序:
+['create_repo', 'upload_folder', 'upload_file', 'secret:GEMINI_API_KEY', 'restart_space']
+```
+
+那串就是造成這次 mock 部署的呼叫順序。
+
+### 四、線上端到端驗證（不是「看起來有起來」）
+
+修完之後對**線上 Space** 實際發問，不是本機：
+
+```json
+{"provider":"gemini","model_id":"gemini-3.1-flash-lite","demo_mode":false,"patient_count":100}
+
+{"answer":"這位個案目前生效中的診斷如下：...(5 項)","refused":false,
+ "evidence":[{"resource_type":"Condition","resource_id":"4e3be31c-...","field":"clinicalStatus","value":"active"}, ...5 筆],
+ "latency_ms":1771,"input_tokens":1456,"output_tokens":112,"estimated_cost_usd":0.000532}
+```
+
+答案與本機逐項一致，5 筆 evidence 各自帶 `Condition/{id}`。`/metrics` 上
+`provider_errors_total`、`refusals_total`、`circuit_state_changes_total` 皆無樣本。
+前端 `/`、`/assets/*.js`、`/assets/*.css` 皆 200。
+
+### 五、測試輸出
+
+```
+uv run ruff check .        All checks passed!
+uv run ruff format --check 102 files already formatted
+uv run mypy                Success: no issues found in 102 source files
+uv run pytest              394 passed, 9 skipped in 19.92s
+```
+
+（部署相關新增 14 個測試：`--stage-dir` 3、`--set-secret-from-env` 3、
+front-matter 5、發布順序 3。）
+
+### 六、決策/發現
+
+- **`--set-secret NAME=VALUE` 會把金鑰留在 shell 歷史與 `ps` 輸出裡。** 一個以
+  「secret 只從環境變數來、永不進 git」為紀律的專案，發布指令卻要求把金鑰打在
+  命令列上，是自相矛盾的。新增 `--set-secret-from-env NAME`，只傳名稱
+- `scripts/_env.py`：`load_env_file` 原本在兩支腳本各有一份逐字相同的複製，
+  第三支要用時抽出來。界線不變——**載入 `.env` 發生在 `scripts/`，不在 `src/`**
+- **公開 demo 與開發、eval 共用同一份 Gemini 免費層額度**（500 req/day/model，
+  per project）。額度用完時 Space 不會壞，會誠實拒答（`refused: true` +
+  `limitations`），但訪客那時看不到真正的 agent。這是已知限制，不是 bug
+- HF Space 的 secret 是 **runtime** env var；`@lru_cache` 的 provider 解析只在
+  process 啟動後第一次請求時發生一次——兩者相加就是上面 (2) 那個坑的成因
+- 部署過程中容器重啟數次（12:29 → 12:33 → 12:44 → 13:06）。**`/metrics` 讀到
+  全零不代表沒有流量，可能只是剛重啟**——判讀時要先對 `budget_counting_since`
+
+### 七、下一步
+
+- 前端單元測試（CI 目前只有編譯與 lint）
+- 「病患存在但工具查不到」的結構化拒答（需要先討論怎麼判斷「工具涵蓋不到」）
+
+---
+
 ## 2026-07-26（續六）— 重跑取變異、三個假護欄與一個會產生死連結的發布腳本
 
 ### 一、injection 重跑:單次執行的百分比不可靠
