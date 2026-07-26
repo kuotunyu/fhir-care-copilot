@@ -26,12 +26,14 @@ jobs:
       - name: Sync dependencies
         # --locked:uv.lock 與 pyproject.toml 不同步時直接 fail,不默默重新解析
         #
-        # --extra postgres:**mypy 需要看得到所有可選依賴**,否則 ops/audit/postgres.py
-        # 會回報 import-not-found,那個檔案等於永遠沒被型別檢查過。
-        # 這不代表 postgres 變成必要依賴——「沒裝 extra 也能跑」由
+        # 兩個 extra 都裝:**mypy 需要看得到所有可選依賴**,否則
+        # ops/audit/postgres.py 與 scripts/capture_screenshots.py 會回報
+        # import-not-found,那兩個檔案等於永遠沒被型別檢查過。
+        # 這不代表它們變成必要依賴——「沒裝 postgres extra 也能跑」由
         # tests/test_audit_trail.py 的 TestMissingDriver 蓋住,而 pytest 在這裡
-        # 仍然沒有 DATABASE_URL,所以走的是檔案模式。
-        run: uv sync --locked --extra postgres
+        # 仍然沒有 DATABASE_URL,所以走的是檔案模式;screenshots 只裝 pip 套件,
+        # **不下載瀏覽器**(playwright install),因為沒有測試會真的開瀏覽器。
+        run: uv sync --locked --extra postgres --extra screenshots
 
       # 拆成兩個 step 而不是一個 multi-line run:windows runner 預設 shell 是
       # pwsh,只會用「最後一行」的 exit code 決定 step 成敗——寫成兩行的話

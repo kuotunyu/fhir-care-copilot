@@ -21,6 +21,11 @@ dependencies = [
 postgres = [
     "psycopg[binary]>=3.2",
 ]
+# README 的截圖由 scripts/capture_screenshots.py 產生,不是手動截的——UI 改了重跑一次
+# 就好。刻意放在 extra 而不是 dev group:CI 用不到,沒必要讓每次 `uv sync` 都拖它。
+screenshots = [
+    "playwright>=1.4",
+]
 
 [dependency-groups]
 dev = [

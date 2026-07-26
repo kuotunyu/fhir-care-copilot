@@ -14,6 +14,10 @@
 - `run_e2e_sample.py`（M6/營運層 Phase 5）— **第二軌**:打真的供應商,量含供應商延遲的
   完整 HTTP 往返。刻意**不是**負載測試——真 provider 有速率限制,併發拉高只會量到
   一整片 429。走單一連線、固定間隔、少量取樣
+- `capture_screenshots.py`（M7）— 產生 README 的介面截圖,**由程式產生不手動截**。
+  自己起後端(mock provider)、走完固定操作流程、存進 `docs/screenshots/`。
+  順便驗 375px 無橫向溢位(M4 的驗收條件)。需要 `uv sync --extra screenshots`
+  與 `uv run playwright install chromium`
 - `run_loadtest.py`（營運層 Phase 0）— 起後端、跑 k6 併發矩陣、收 summary，
   輸出到 `reports/loadtest/`
 - `verify_audit_chain.py`（營運層 Phase 4）— 掃描稽核軌跡的 hash chain，

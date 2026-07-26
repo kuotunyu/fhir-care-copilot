@@ -6,6 +6,100 @@
 
 ---
 
+## 2026-07-26（續五）— README 截圖:由程式產生,而且拍不出來的那張沒有硬拍
+
+**起點**
+
+回顧時列出的第一個待補項目。原本的阻礙是「開發機的 Browser pane 無法 compositing」,
+但那只擋得住互動式截圖——**Playwright headless 不需要可見視窗**。
+
+**做法:截圖是產物,不是手工活**
+
+`scripts/capture_screenshots.py` 自己起後端(mock provider,deterministic 不花錢)、
+走完固定的操作流程、存進 `docs/screenshots/`。UI 改了重跑一次就好,不會有「圖跟現況
+對不上」的問題——跟 `reports/` 底下那些數字同一個原則。
+
+放在 `[project.optional-dependencies] screenshots` 而不是 dev group:CI 用不到瀏覽器,
+沒必要讓每次 `uv sync` 都拖它。
+
+順便驗一件事:**375px 下無橫向溢位**——那是 M4 的驗收條件之一,現在每次產截圖都會
+自動檢查一次,從一次性驗收變成回歸檢查。
+
+**四張圖,以及第五張刻意沒拍**
+
+1. 病患清單 + 時間軸
+2. 問答 + **證據抽屜打開**——只拍聊天泡泡看不出跟一般 chatbot 的差別
+3. 成本/延遲 badge + 證據清單特寫
+4. 手機寬度 375px
+
+**原本計畫要拍「結構化拒答」,查過之後發現拍不出來**:這個系統唯一的拒答觸發點是
+「病患不存在」(工具回 `ok=False`),而 UI 的病患選擇器只列得出真實存在的病患——
+**從介面上根本走不到那條路徑**。硬拍會變成一張標錯標題的假圖。
+
+這不是截圖漏拍,是**產品缺口**:「病患存在但工具查不到」(例如問保險給付)目前不會
+觸發結構化拒答。已寫進 README 的已知限制。
+
+**過程中修掉的三個東西**
+
+- **README 架構圖還寫著 `gemini-3.5-flash-lite`**——退回 3.1 時漏改了那個 Mermaid 節點
+- **PLAN 的 Phase 1 checkbox 從頭到尾沒勾**(實作與 36 個測試都在,只是漏勾);
+  Phase 5 還寫著「端到端那一軌除外」,而那早上就補完了
+- 第一版截圖有兩個瑕疵,都照實修:證據清單被輸入框切掉(對話面板有自己的捲動容器,
+  `full_page` 救不到);修法第一版又太粗暴,把**每個**可捲元素都捲到底,結果左側
+  病患清單也捲走了,選中的病患不見了。改成只捲證據所在的那個容器
+
+**第四個瑕疵:圖太大,而 hook 擋得有道理**
+
+第一版用 `device_scale_factor=2`,單張 525 KB,被 `check-added-large-files`(上限 500 KB)
+擋下。**這次不是 hook 太嚴**:截圖是會隨 UI 反覆重新產生的檔案,每次都塞半 MB 進 git
+歷史,repo 只會越長越肥。所以正確做法是把圖做小,不是放寬 hook。
+
+全頁圖改成 1 倍(1440px 原圖,README 顯示寬度約 900px,夠銳利),525 KB → 243 KB;
+小範圍特寫另開一個 2 倍的頁面,檔案本來就小、細節值得。
+
+**並且把檢查搬到產生器裡**:超過上限就當場 `SystemExit`,不要等到 `git commit` 被 hook
+擋——那時候檔案已經 staged,要重新 add 一次。**產生器該為自己的產物負責**,這跟前面
+「產生器的輸出必須是 pre-commit 乾淨的」是同一條原則。
+
+**CI 也要跟著改**
+
+`ci.yml` 的 check job 原本只裝 `--extra postgres`,理由寫得很清楚:
+「mypy 需要看得到所有可選依賴,否則那個檔案等於永遠沒被型別檢查過」。
+同一個理由套用到 playwright,所以加上 `--extra screenshots`——但**不下載瀏覽器**,
+因為沒有測試會真的開瀏覽器。
+
+**真實測試輸出**
+
+```
+$ just check
+All checks passed!
+100 files already formatted
+Success: no issues found in 100 source files
+342 passed, 9 skipped in 14.26s
+
+$ uv run python scripts/capture_screenshots.py
+INFO 375px 下無橫向溢位
+INFO 已輸出 docs/screenshots/01-patient-timeline.png(525 KB)
+INFO 已輸出 docs/screenshots/02-answer-with-evidence.png(522 KB)
+INFO 已輸出 docs/screenshots/03-cost-and-evidence.png(60 KB)
+INFO 已輸出 docs/screenshots/04-mobile.png(146 KB)
+```
+
+**決策/發現**
+
+**1. 「拍不出來」比「拍得不好」更值得記。** 追一張拍不到的截圖,追出一個產品缺口。
+如果當時隨便找個畫面標成「拒答」,那個缺口會被一張假圖蓋住。
+
+**2. 截圖腳本順便變成回歸檢查。** 375px 無橫向溢位原本是 M4 驗收時人工看過一次,
+現在每次產截圖都自動驗。**驗收條件寫成一次性的檢查,遲早會回歸。**
+
+**下一步**
+
+- 多次重跑取平均(三個模型目前各只跑一次全量)
+- 部署到 Hugging Face Space(`publish_to_hf.py` 目前只跑過 dry-run)
+
+---
+
 ## 2026-07-26（續四）— 端到端那一軌、三模型全量，以及一路挖出的四個 bug
 
 **起點**

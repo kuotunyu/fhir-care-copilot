@@ -42,6 +42,11 @@ precommit:
 hooks:
     git config core.hooksPath scripts/git-hooks
 
+# 產生 README 的介面截圖(需要 `uv sync --extra screenshots` 與
+# `uv run playwright install chromium`)。先 build 前端,否則截到空白頁。
+screenshots: frontend-build
+    uv run python scripts/capture_screenshots.py
+
 # ---- 營運層:Postgres 稽核後端 ----
 
 # 對**真的** Postgres 跑稽核軌跡的整合測試(等同 CI 的 postgres job)。
