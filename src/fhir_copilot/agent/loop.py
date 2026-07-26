@@ -17,6 +17,7 @@ span 屬性只記工具名稱與結果形狀,不記工具回傳的病患欄位(�
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -30,6 +31,8 @@ from fhir_copilot.providers.base import Provider, ToolCallOutcome
 from fhir_copilot.store.base import FHIRStore
 from fhir_copilot.tools.base import Evidence
 from fhir_copilot.tools.registry import READ_ONLY_TOOLS, TOOLS_BY_NAME
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "你是長照個案查詢助理。你唯一能得知病患事實的方式是呼叫提供的工具——"
@@ -125,6 +128,26 @@ def _execute_tool_calls(
     return outcomes, evidence, any_not_found
 
 
+def _log_provider_unavailable(call: str, exc: BaseException) -> None:
+    """把「為什麼拒答」記下來。
+
+    這兩個 except 原本把例外整個吞掉,結構化拒答在日誌裡不留任何原因——
+    真實跑端到端取樣時撞到 3/30 拒答,只能從時間戳反推是逾時還是別的,
+    那不是可觀測性,那是考古。**拒答是預期內的行為,但「為什麼」不是。**
+
+    只記例外的類別與訊息:那是 provider SDK 的錯誤,不含病患資料。
+    """
+    cause = exc.__cause__ or exc.__context__
+    logger.warning(
+        "provider 不可用,轉為結構化拒答",
+        extra={
+            "call": call,
+            "error_type": type(cause).__name__ if cause else type(exc).__name__,
+            "error_message": str(cause) if cause else str(exc),
+        },
+    )
+
+
 def answer_question(
     *,
     provider: Provider,
@@ -150,7 +173,8 @@ def answer_question(
         step = provider.start(
             system_prompt=SYSTEM_PROMPT, user_message=question, tool_specs=list(READ_ONLY_TOOLS)
         )
-    except ProviderUnavailableError:
+    except ProviderUnavailableError as exc:
+        _log_provider_unavailable("start", exc)
         return _refuse(
             model_id=provider.model_id,
             limitation=_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE,
@@ -198,7 +222,8 @@ def answer_question(
 
         try:
             step = provider.continue_with_tool_results(step.state, outcomes)
-        except ProviderUnavailableError:
+        except ProviderUnavailableError as exc:
+            _log_provider_unavailable("continue", exc)
             # 已經花掉的 token 照樣計費——重試也可能已經產生成本,不能當沒發生
             return _refuse(
                 model_id=provider.model_id,
