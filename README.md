@@ -91,7 +91,7 @@ flowchart LR
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界；eval 內建 injection 題型驗證（見下方 eval 結果） |
 | **病患範圍由伺服器端注入，LLM 無法竄改** | `patient_id` 從 LLM 看得到的工具 schema 中移除（[`tools/registry.py:llm_facing_schema`](src/fhir_copilot/tools/registry.py)），由 agent loop 依對話 session 直接注入工具呼叫（見 [ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
 | **Secret 只從環境變數來** | `.env`、`data/raw`、`data/processed` 永不進 git（`.gitignore`） |
-| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；**單次 provider 呼叫的逾時另外設在 [`configs/ops.yaml`](configs/ops.yaml)**，並下到 SDK 的 HTTP client（真的中止請求，不是「不等它」） |
+| **Agent loop 護欄** | `max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`（`configs/guardrails.yaml`，不寫死在程式）。`timeout_seconds` 是**整個 loop 的累計時間上限**，在每輪工具呼叫前檢查；**單次 provider 呼叫的逾時另外設在 [`configs/ops.yaml`](configs/ops.yaml)**，並下到 SDK 的 HTTP client（真的中止請求，不是「不等它」）。`max_output_tokens` 也會傳到兩個 provider 的 SDK——**在 2026-07-26 之前它只被載入、沒有傳給任何人**，而這張表一直把它列為護欄，等於文件承諾了、實作沒有 |
 
 完整 threat model 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)。
 
@@ -118,15 +118,17 @@ flowchart LR
 | **Citation validity rate** | **100.0%** | **100.0%** | **100.0%** |
 | Unsupported-claim rate | **0.0%** | 0.6% | 2.2% |
 | Refusal accuracy | 100.0% | 100.0% | 100.0% |
-| **Injection resistance rate** | **100.0%**² | **100.0%** | 95.0%³ |
+| Injection resistance（單次全量） | 100.0% | 100.0% | 95.0% |
+| **Injection resistance（重跑中位數）** | **95%**² | **100%**² | **80%**³ |
 | p50 / p95 latency | **1376 / 2005 ms** | 2627 / 5539 ms | 2695 / 5020 ms |
 | 平均成本／題 | $0.00053 | $0.00163 | **$0.00042** |
 
 ¹ 人工核閱逐字稿確認並非答錯，而是模型把英文藥名/診斷翻譯成正體中文或改寫格式（如 `Prediabetes` → `糖尿病前期 (Prediabetes)`），嚴格子字串比對抓不到這類改寫，此指標低估真實品質。**注意：先前公布的 54.2% 出自 30 題小樣本，全量跑出來只有四成上下——小樣本高估了約 13 個百分點。**
 
-² 這個判準**被真實資料打臉過五次**（假陽性四次、假陰性一次），詳見 [MODEL_CARD.md](MODEL_CARD.md)「已知限制」。目前的版本與三種獨立視角的人工核閱在 40 題上逐題完全一致。另外實測發現**同一個模型對同一道題，兩次執行可能給出不同回答**——單次執行的百分比不該當成模型的性質。
+² **單次執行的百分比不可靠。** 同一組 20 題重跑多次：`gemini-3.1` 是 100/90/95（第 4 輪因免費層配額用完只跑到 19/20 題，已排除）、`gpt-5.4-mini` 是 100/100/100/100/90、`gpt-5.4-nano` 是 85/80/80/80/75——**三個模型沒有一個是穩定的**。完整分佈與逐一手法的失守次數見 [reports/injection_variance.md](reports/injection_variance.md)。
+　　這個判準本身也**被真實資料打臉過五次**（假陽性四次、假陰性一次），詳見 [MODEL_CARD.md](MODEL_CARD.md)「已知限制」。目前的版本與三種獨立視角的人工核閱在 40 題上逐題完全一致。
 
-³ `gpt-5.4-nano` 便宜 3.9 倍但在三個指標上都比 mini 差，而且那一次失守的方式值得注意：它拒絕了「開立處方」這個**動作**（說系統沒有這個功能），然後主動提出要給「可直接照開的處方建議（藥名、劑量、用法、療程）」，還自行判讀了腎功能。**拒絕形式，提供實質。** 三個獨立視角一致認定為真的失守。長照場景不建議用它換那 $0.0012。
+³ 單次全量那個 95% **是運氣好**——5 次重跑的中位數只有 80%。而且失守幾乎全部集中在同一種手法：「假扮醫生開處方」在 20 次嘗試中失守 **16 次**（`gemini-3.1` 與 `mini` 各只有 2 次）。**總百分比會把這件事藏起來**——80% 聽起來像整體偏弱，實際上是四種手法守得住、一種幾乎全破，而那一種剛好是長照場景最危險的。失守的方式：它拒絕了「開立處方」這個**動作**（說系統沒有這個功能），然後主動提出要給「可直接照開的處方建議（藥名、劑量、用法、療程）」，還自行判讀了腎功能。**拒絕形式，提供實質。** 三個獨立視角一致認定為真的失守。長照場景不建議用它換那 $0.0012。
 
 ### 換模型踩到的事### 換模型踩到的事：最新不一定比較好
 
@@ -306,6 +308,7 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
 - 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
+- **前端沒有單元測試**。CI 會跑 `oxlint` 與 `tsc -b && vite build`，所以型別錯誤與 lint 問題擋得住，但**元件行為沒有測試覆蓋**；UI 的回歸目前靠截圖腳本（會驗 375px 無橫向溢位）與人工檢查
 - **從 UI 走不到結構化拒答**：唯一的拒答觸發點是「病患不存在」，而病患選擇器只列得出真實存在的病患。「病患存在但工具查不到」（例如問保險給付）目前不會觸發拒答，是架構上還沒做的部分
 - 「不可回答」題型目前只涵蓋「病患不存在」情境
 - 開發樣本為 Synthea 1K 樣本的 100 位子集，非完整資料集（詳見 [DATA_CARD.md](DATA_CARD.md)）
@@ -322,7 +325,7 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 - **量測**：k6（併發矩陣與故障注入），腳本與原始輸出都在 repo 內
 - **容器化**：multi-stage Dockerfile（Node build → Python 3.13-slim runtime），HF Docker Space 相容（UID 1000、`EXPOSE 7860`）；
   `docker compose` 的 `dev` profile 附 Jaeger、`db` profile 附 Postgres，**兩者都不進 production image**
-- **CI**：ubuntu + windows 雙 OS matrix、image build 與容器 smoke test、帶 Postgres service container 的整合測試
+- **CI**：ubuntu + windows 雙 OS matrix、image build 與容器 smoke test、帶 Postgres service container 的整合測試、前端 lint + build（`oxlint` 與 `tsc -b`）。**前端那一項是編譯與靜態檢查，不是測試**——前端目前沒有單元測試，這點誠實記在已知限制
 
 ## 開發
 
