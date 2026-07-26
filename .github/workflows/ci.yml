@@ -101,6 +101,34 @@ jobs:
           DATABASE_URL: postgresql://copilot:copilot@localhost:5432/copilot
         run: uv run python scripts/verify_audit_chain.py
 
+  frontend:
+    # 前端一直沒有進 CI——**而 Docker build 每次都在跑 `npm run build`**,
+    # 所以型別錯誤其實會被 docker job 抓到,只是要等整個 image 建完、
+    # 而且錯誤訊息埋在 build log 深處。獨立成一個 job 才會第一時間指出是前端壞了。
+    #
+    # 沒有前端單元測試,所以這裡跑的是「編得起來、lint 過」——`npm run build`
+    # 是 `tsc -b && vite build`,型別檢查包含在內。誠實記錄:這**不是**測試,
+    # 是編譯與靜態檢查。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # npm ci 而不是 npm install:鎖檔說了算,CI 不該自己解版本
+      - name: Install dependencies
+        run: npm ci --prefix app
+
+      - name: Lint (oxlint)
+        run: npm run --prefix app lint
+
+      - name: Build (tsc -b + vite build)
+        run: npm run --prefix app build
+
   docker:
     # image 建置只在 Linux 驗證(base image 都是 linux)。這個 job 要抓的是
     # .dockerignore 與 COPY / layer 順序這類與開發機無關的錯誤——正是先前
