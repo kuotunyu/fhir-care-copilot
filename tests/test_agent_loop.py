@@ -11,6 +11,7 @@ from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCal
 from fhir_copilot.providers.mock import MockProvider
 from fhir_copilot.store import LocalBundleFHIRStore
 from fhir_copilot.tools.base import Evidence
+from fhir_copilot.tools.registry import READ_ONLY_TOOLS
 from tests.conftest import AMY_ID, BEN_ID
 
 
@@ -49,6 +50,302 @@ class _LoopingProvider:
         return ProviderStep(
             state=None, tool_calls=(call,), final_answer=None, input_tokens=0, output_tokens=0
         )
+
+
+class _NoToolProvider:
+    """一次工具都不呼叫,直接給最終答案——模型「憑記憶回答」時的形狀。"""
+
+    model_id = "mock-deterministic"
+
+    def __init__(self, answer: str = "他目前在服用 Metformin 500mg。") -> None:
+        self._answer = answer
+
+    def start(
+        self, *, system_prompt: str, user_message: str, tool_specs: Sequence[Any]
+    ) -> ProviderStep:
+        del system_prompt, user_message, tool_specs
+        return ProviderStep(
+            state=None,
+            tool_calls=(),
+            final_answer=self._answer,
+            input_tokens=100,
+            output_tokens=20,
+        )
+
+    def continue_with_tool_results(
+        self, state: Any, outcomes: Sequence[ToolCallOutcome]
+    ) -> ProviderStep:  # pragma: no cover - 不會被呼叫到
+        raise AssertionError("不該走到這裡")
+
+
+class _UnknownToolThenAnswerProvider:
+    """先喊一個不存在的工具,再直接給答案。
+
+    「模型要求了工具」不等於「查過資料」——未知工具的 handler 根本沒跑。
+    """
+
+    model_id = "mock-deterministic"
+
+    def start(
+        self, *, system_prompt: str, user_message: str, tool_specs: Sequence[Any]
+    ) -> ProviderStep:
+        del system_prompt, user_message, tool_specs
+        call = RequestedToolCall(call_id="c", tool_name="list_hospital_admissions", arguments={})
+        return ProviderStep(
+            state=None, tool_calls=(call,), final_answer=None, input_tokens=10, output_tokens=5
+        )
+
+    def continue_with_tool_results(
+        self, state: Any, outcomes: Sequence[ToolCallOutcome]
+    ) -> ProviderStep:
+        del state, outcomes
+        return ProviderStep(
+            state=None,
+            tool_calls=(),
+            final_answer="他上次住院是 2019 年。",
+            input_tokens=10,
+            output_tokens=5,
+        )
+
+
+class _OutOfScopeProvider:
+    """呼叫 report_out_of_scope 宣告查不到,然後(如果還讓它講的話)硬答。
+
+    第二段刻意寫成硬答:要證明的是 loop **在宣告當下就停**,不會讓模型把
+    「我無法查閱⋯」或任何編造內容送到使用者面前。
+    """
+
+    model_id = "mock-deterministic"
+
+    def start(
+        self, *, system_prompt: str, user_message: str, tool_specs: Sequence[Any]
+    ) -> ProviderStep:
+        del system_prompt, user_message, tool_specs
+        call = RequestedToolCall(
+            call_id="c",
+            tool_name="report_out_of_scope",
+            arguments={"missing_information": "保險給付範圍"},
+        )
+        return ProviderStep(
+            state=None, tool_calls=(call,), final_answer=None, input_tokens=40, output_tokens=8
+        )
+
+    def continue_with_tool_results(
+        self, state: Any, outcomes: Sequence[ToolCallOutcome]
+    ) -> ProviderStep:  # pragma: no cover - 不該被呼叫到
+        raise AssertionError("宣告超出範圍之後不該再問模型")
+
+
+class TestReportOutOfScope:
+    """「病患存在,但問的是五個工具都涵蓋不到的東西」。
+
+    2026-07-26 用真實模型實測(gemini-3.1-flash-lite,問保險給付範圍),
+    在這個工具存在之前實際發生的是:
+
+        模型呼叫工具 → 拿到不相關資料 → 回答「我無法查閱保險資訊」
+        → refused=False,而且掛著 3 筆與答案無關的 evidence
+
+    回答內容是對的,契約是錯的。下游分辨不出「查了而且答出來」與
+    「查了但答不出來」,而那兩件事該做的下一步完全不同。
+
+    判斷「模型是不是在拒答」如果靠解析回答文字,就回到啟發式判準——
+    eval 的 judge 在這件事上改過五次還是不穩。給模型一個工具去宣告,
+    把判斷問題變成結構問題。
+    """
+
+    def test_declaration_becomes_a_structured_refusal(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_OutOfScopeProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他的保險給付範圍包含哪些項目?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.refused is True
+        assert result.limitations is not None
+        assert "超出可查詢的資料範圍" in result.limitations
+
+    def test_no_evidence_is_attached_to_a_refusal(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        """拒答不可以掛著證據。**那正是修掉的那個 bug 的形狀**:
+        一句「我答不出來」配上三筆不支持它的 evidence。"""
+        result = answer_question(
+            provider=_OutOfScopeProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他的保險給付範圍包含哪些項目?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.evidence == []
+
+    def test_tokens_already_spent_are_billed(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_OutOfScopeProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他的保險給付範圍包含哪些項目?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.input_tokens == 40
+        assert result.output_tokens == 8
+
+    def test_the_tool_never_touches_the_store(self) -> None:
+        """它是唯讀的,而且比唯讀更嚴格——完全不碰 store(ADR 0001 的邊界沒放寬)。"""
+        from fhir_copilot.tools.out_of_scope import ReportOutOfScopeInput, report_out_of_scope
+
+        class _ExplodingStore:
+            def __getattr__(self, name: str) -> Any:
+                raise AssertionError(f"這個工具不該碰 store(存取了 {name})")
+
+        result = report_out_of_scope(
+            _ExplodingStore(),
+            ReportOutOfScopeInput(patient_id=AMY_ID, missing_information="保險給付"),
+        )
+
+        assert result.out_of_scope is True
+        assert result.evidence == []
+
+    def test_coverage_sentence_lists_only_data_tools(self) -> None:
+        """拒答訊息裡「目前能查的是⋯」不該把 report_out_of_scope 也列進去
+        ——它一筆資料都查不到,列進去是誤導。"""
+        from fhir_copilot.agent.loop import _coverage_sentence
+
+        sentence = _coverage_sentence()
+        for spec in READ_ONLY_TOOLS:
+            if spec.queries_patient_data:
+                assert spec.description in sentence
+            else:
+                assert spec.description not in sentence
+
+
+class TestRequireToolCallBeforeAnswer:
+    """「病患存在,但問的東西五個工具都涵蓋不到」——在此之前這個情況沒有結構保護。
+
+    專案的核心宣稱是「LLM 不憑記憶回答病患事實」,但那件事**只寫在 system prompt
+    裡**。模型不照做時,回應契約標的是 refused=false、evidence=[],外觀上跟
+    「查了資料而且答出來了」完全一樣。
+
+    判準刻意是「有沒有真的執行過工具」,不是「有沒有拿到 evidence」——
+    後者會把 test_valid_empty_result_is_not_a_refusal 那種正確答案一起擋掉。
+    """
+
+    def test_answer_without_any_tool_call_is_refused(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_NoToolProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.refused is True
+        assert result.evidence == []
+        # 模型編出來的內容不可以出現在回應裡
+        assert "Metformin" not in result.answer
+        assert result.limitations is not None
+        assert "超出可查詢的資料範圍" in result.limitations
+
+    def test_refusal_names_what_is_actually_queryable(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        """拒答要告訴使用者「那什麼查得到」,而且那句話是從 registry 生成的。"""
+        result = answer_question(
+            provider=_NoToolProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.limitations is not None
+        for spec in READ_ONLY_TOOLS:
+            if spec.queries_patient_data:
+                assert spec.description in result.limitations
+
+    def test_already_spent_tokens_are_still_billed(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        """拒答不代表沒花錢。那一次 provider 呼叫真的發生了,成本要照算。"""
+        result = answer_question(
+            provider=_NoToolProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.input_tokens == 100
+        assert result.output_tokens == 20
+
+    def test_requesting_an_unknown_tool_does_not_count_as_consulting_data(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_UnknownToolThenAnswerProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.refused is True
+        assert "2019" not in result.answer
+
+    def test_can_be_switched_off_to_reproduce_earlier_eval_numbers(
+        self, store: LocalBundleFHIRStore, pricing: dict[str, Any]
+    ) -> None:
+        """reports/ 底下的 eval 數字是在這道護欄之前量的。關掉才重現得出來。"""
+        relaxed = Guardrails(
+            max_tool_rounds=6,
+            timeout_seconds=30,
+            max_input_chars=4000,
+            max_output_tokens=1024,
+            require_tool_call_before_answer=False,
+        )
+        result = answer_question(
+            provider=_NoToolProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=relaxed,
+            pricing=pricing,
+        )
+
+        assert result.refused is False
+        assert "Metformin" in result.answer
+
+    def test_normal_answers_are_untouched(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        """對照組:有呼叫工具的正常問答不受這道護欄影響。"""
+        result = answer_question(
+            provider=MockProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他目前有在吃什麼藥?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+        assert result.refused is False
+        assert len(result.evidence) >= 1
 
 
 def test_answers_with_evidence_and_zero_cost_via_mock(

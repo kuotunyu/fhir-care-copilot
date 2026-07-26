@@ -35,6 +35,9 @@ class Guardrails(BaseModel):
     timeout_seconds: int
     max_input_chars: int
     max_output_tokens: int
+    # 預設 True(安全的那一邊)。給預設值是為了讓既有直接建構 Guardrails 的測試
+    # 不必全部改;configs/guardrails.yaml 仍然明確寫出來,不靠預設值。
+    require_tool_call_before_answer: bool = True
 
 
 def _read_yaml(path: Path) -> Any:

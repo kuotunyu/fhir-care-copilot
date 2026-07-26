@@ -4,11 +4,25 @@
 
 max_tool_rounds: 6 # 單次對話最多幾輪「LLM 要求呼叫工具 → 執行 → 餵回」
 # 整個 agent loop 的累計時間上限,在每輪工具呼叫前檢查一次(agent/loop.py)。
-# 注意這不是單次 provider 呼叫的逾時——provider adapter 目前沒有任何 timeout,
-# 所以卡在單次 API 呼叫時這個值攔不到。單次呼叫逾時待營運層 Phase 3 補上。
+# 注意這不是單次 provider 呼叫的逾時——那個是 configs/ops.yaml 的
+# resilience.provider_timeout_seconds(12 秒,下在 SDK 的 HTTP client 上),
+# 營運層 Phase 3 已補上。兩者是不同層級,不要互相覆蓋。
 timeout_seconds: 30
 max_input_chars: 4000 # 使用者輸入長度上限(防過長輸入拖垮 loop/預算)
 max_output_tokens: 1024 # 單次回答輸出上限,會傳給 provider SDK
+#
+# 模型一次工具都沒呼叫就直接給出最終答案時,結構化拒答。
+#
+# 為什麼:整個專案的核心宣稱是「LLM 不憑記憶回答病患事實」,但在此之前那件事
+# **只靠 system prompt 要求**。模型不呼叫工具就回答時,它的答案沒有任何確定性
+# 依據,而回應契約卻標成 refused=false、evidence=[]——看起來像「回答了」。
+#
+# 注意這**不是**「evidence 是空的就拒答」。工具回傳 ok=True 但清單為空
+# (例如沒有生效中用藥)是可驗證的事實,必須照常回答(見 tools/base.py 的語意定義)。
+# 判準是「有沒有真的執行過工具」,不是「有沒有拿到資料」。
+#
+# 設成 false 可以重現 reports/ 底下那些在本護欄之前量到的 eval 數字。
+require_tool_call_before_answer: true
 # (2026-07-26 之前這個值**只被載入、沒有傳給任何 provider**,但 MODEL_CARD 一直
 #  把它列為 agent loop 的四道護欄之一——文件承諾了、實作沒有,那比沒有護欄更糟,
 #  因為讀文件的人會以為有保護。已接到兩個 adapter,並有測試守著。)

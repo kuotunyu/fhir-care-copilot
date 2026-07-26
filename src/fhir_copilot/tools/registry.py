@@ -21,6 +21,7 @@ from fhir_copilot.tools.demographics import (
 )
 from fhir_copilot.tools.medications import ListActiveMedicationsInput, list_active_medications
 from fhir_copilot.tools.observations import GetRecentObservationsInput, get_recent_observations
+from fhir_copilot.tools.out_of_scope import ReportOutOfScopeInput, report_out_of_scope
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,12 @@ class ToolSpec:
     description: str
     input_model: type[BaseModel]
     handler: Callable[[FHIRStore, Any], BaseModel]
+    # 這個工具是不是真的去查病患資料。目前只有 report_out_of_scope 是 False
+    # ——它不碰 store,只把「查不到」變成結構訊號。
+    #
+    # 用旗標而不是在別處寫死工具名稱:拒答訊息裡「目前能查的是⋯」那句話是從
+    # 這裡篩出來生成的,加新工具時不會有人忘記同步某個字串常數。
+    queries_patient_data: bool = True
 
 
 READ_ONLY_TOOLS: tuple[ToolSpec, ...] = (
@@ -61,6 +68,20 @@ READ_ONLY_TOOLS: tuple[ToolSpec, ...] = (
         description="取得病患照護計畫時間軸",
         input_model=GetCarePlanTimelineInput,
         handler=get_care_plan_timeline,
+    ),
+    # 不查資料的那一個:讓模型宣告「上面五個工具都涵蓋不到這題」。
+    # 理由見 tools/out_of_scope.py——把「模型是不是在拒答」從文字判斷
+    # 變成結構訊號。它仍然是唯讀的(不碰 store、不回傳病患欄位)。
+    ToolSpec(
+        name="report_out_of_scope",
+        description=(
+            "當使用者想知道的資訊不在上述任何工具的範圍內時呼叫此工具"
+            "(例如保險給付、費用、住院帳單、家屬聯絡方式、非本院資料)。"
+            "**不要自行編造,也不要用不相關的資料勉強回答。**"
+        ),
+        input_model=ReportOutOfScopeInput,
+        handler=report_out_of_scope,
+        queries_patient_data=False,
     ),
 )
 
