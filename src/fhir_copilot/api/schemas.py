@@ -34,6 +34,7 @@ class HealthResponse(BaseModel):
     budget_spent_usd_today: float
     # ---- 稽核與預算的降級狀態(Phase 4)----
     audit_backend: str  # postgres | jsonl
+    audit_available: bool  # false = 後端連不上,status 會是 degraded
     draft_signing_key_configured: bool  # false = 用 process 臨時金鑰,重啟後舊草稿失效
     budget_persistent: bool  # false = 記憶體計數,重啟歸零
     budget_counting_since: str  # 記憶體模式的起算時間——攤開講,不假裝它是持久的

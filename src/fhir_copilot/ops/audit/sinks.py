@@ -52,6 +52,14 @@ class AuditSink(Protocol):
 
     def read_all(self) -> list[AuditRecord]: ...
 
+    def is_available(self) -> bool:
+        """給 ``/api/health`` 用:**不拋例外**,只回報現在能不能寫。
+
+        健康檢查不該因為下游壞掉而失敗——那樣監控只會看到「連不上」,
+        分不出「服務死了」與「資料庫死了」,而這兩件事的處理方式完全不同。
+        """
+        ...
+
 
 class JsonlAuditSink:
     """檔案模式。
@@ -70,6 +78,14 @@ class JsonlAuditSink:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = threading.Lock()
+
+    def is_available(self) -> bool:
+        """檔案模式只要目錄建得起來就算可用——沒有網路那一環會斷。"""
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return False
+        return True
 
     def read_all(self) -> list[AuditRecord]:
         if not self._path.is_file():

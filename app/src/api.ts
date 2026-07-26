@@ -165,6 +165,14 @@ export function describeApiError(error: unknown): string {
           : ''
       return `今日查詢額度已用完${usage},額度會在每日 UTC 00:00 重置。`
     }
+    case 'budget_unavailable': {
+      // 用量計數暫時讀不到 → 後端 fail closed。對照護人員來說重點是
+      // 「這是暫時的、稍後再試」,不是「稽核資料庫連不上」。
+      const seconds = error.retryAfterSeconds
+      return seconds
+        ? `服務暫時無法處理查詢,請等 ${seconds} 秒後再試。`
+        : '服務暫時無法處理查詢,請稍後再試。'
+    }
     default:
       break
   }

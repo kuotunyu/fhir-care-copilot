@@ -72,6 +72,22 @@ def rate_limited(retry_after_seconds: int, requests_per_minute: int) -> OpsRejec
     )
 
 
+def budget_unavailable() -> OpsRejection:
+    """讀不到預算計數(稽核資料庫連不上)。
+
+    **fail closed**:算不出花了多少就不要再花。這和 ``estimate_cost_usd``
+    缺單價時 raise 是同一個原則——成本不可信比服務暫時不可用危險。
+
+    回 503 而不是 500:這是「下游暫時不可用」,不是這個服務出錯。
+    """
+    return OpsRejection(
+        status_code=503,
+        detail="服務暫時無法處理查詢(用量計數暫時讀不到),請稍後再試。",
+        error_code="budget_unavailable",
+        retry_after_seconds=30,
+    )
+
+
 def budget_exceeded(
     *, spent_usd: float, limit_usd: float, seconds_until_reset: int
 ) -> OpsRejection:

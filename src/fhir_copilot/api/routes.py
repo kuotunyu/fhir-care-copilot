@@ -84,19 +84,26 @@ def health(store: StoreDep, provider: ProviderDep) -> HealthResponse:
     provider_name = get_provider_name()
     ops = get_ops()
     budget = get_budget()
+    sink = get_audit_sink()
+    # 稽核後端連不上時回報 degraded,**不要拋例外**——健康檢查本身壞掉的話,
+    # 監控分不出「服務死了」與「下游死了」,而這兩件事的處理方式完全不同。
+    audit_available = sink.is_available()
+    # 預算計數在資料庫模式下也依賴同一個後端;讀不到就不假裝知道花了多少
+    spent = round(budget.spent_today_usd(), 6) if audit_available else 0.0
     return HealthResponse(
-        status="ok",
+        status="ok" if audit_available else "degraded",
         provider=provider_name,
         model_id=provider.model_id,
         demo_mode=provider_name == "mock",
         patient_count=len(store.list_patients()),
         auth_required=require_auth(),
         api_key_count=len(load_api_keys()),
-        audit_backend=get_audit_sink().backend,
+        audit_backend=sink.backend,
+        audit_available=audit_available,
         draft_signing_key_configured=key_is_configured(),
         rate_limit_per_minute=ops.rate_limit.requests_per_minute,
         budget_limit_usd=budget.daily_limit_usd,
-        budget_spent_usd_today=round(budget.spent_today_usd(), 6),
+        budget_spent_usd_today=spent,
         # 記憶體計數,重啟歸零——把起算時間攤開講,不假裝它是持久的
         budget_persistent=budget.is_persistent,
         budget_counting_since=budget.counting_since.isoformat(timespec="seconds"),

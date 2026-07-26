@@ -271,9 +271,25 @@ def guard_costly(caller: Annotated[str, Depends(guard_protected)]) -> str:
         get_pricing(),
     )
     budget = get_budget()
-    if budget.would_exceed(estimated):
+    # 後端已知不可用時**立刻**拒絕,不要每個請求各自去撞一次連線逾時。
+    # 實測(故障注入場景表):少了這一關,資料庫掛掉時 chat 的 p50 是 16.7 秒,
+    # 每個請求都佔住一個 threadpool slot——那正是熔斷要防的 threadpool 耗盡,
+    # 只是肇因從 provider 換成資料庫。這裡用的是背景探測的快取結果,不阻塞。
+    if budget.is_persistent and not get_audit_sink().is_available():
+        raise errors.budget_unavailable()
+
+    try:
+        exceeded = budget.would_exceed(estimated)
+        spent = budget.spent_today_usd()
+    except Exception as exc:
+        # 稽核資料庫連不上 → 讀不到計數。**fail closed**:算不出花了多少就不要
+        # 再花。回 503 結構化拒絕,不是 500 stack trace。
+        logger.warning("讀不到預算計數,暫時拒絕會花錢的請求", exc_info=exc)
+        raise errors.budget_unavailable() from exc
+
+    if exceeded:
         raise errors.budget_exceeded(
-            spent_usd=budget.spent_today_usd(),
+            spent_usd=spent,
             limit_usd=budget.daily_limit_usd,
             seconds_until_reset=DailyBudget.seconds_until_utc_midnight(),
         )

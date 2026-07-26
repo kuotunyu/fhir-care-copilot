@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any
 
 import psycopg
@@ -83,27 +84,94 @@ _COLUMNS = (
 _APPEND_LOCK_KEY = 0x_CA4E_A0D1
 
 
+class AuditBackendUnavailableError(RuntimeError):
+    """資料庫連不上。**不是**「稽核紀錄寫壞了」,是「現在寫不進去」。"""
+
+
 class PostgresAuditSink:
     backend = "postgres"
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, *, connect_timeout: int = 5) -> None:
+        # **刻意不在建構時連線。** 資料庫暫時不可用不該讓整個服務起不來——
+        # 尤其不該讓 /api/health 跟著死掉:那樣監控只會看到「連不上」,
+        # 分不出「服務死了」與「資料庫死了」,而這兩件事的處理方式完全不同。
         self._url = url
+        self._connect_timeout = connect_timeout
         self._lock = threading.Lock()
-        self._migrate()
+        self._migrated = False
+        # 可用性探測的狀態。探測**在背景執行緒做**,見 is_available()。
+        #
+        # 探測用**另一把鎖**:背景探測會呼叫 _ensure_ready(),而那裡持有 _lock
+        # 長達整個連線逾時。共用同一把鎖的話,健康檢查會卡在鎖上等探測結束——
+        # 實測那讓一次健康檢查花了 8.9 秒,等於背景探測完全白做。
+        self._probe_lock = threading.Lock()
+        self._available = False
+        self._probed_once = threading.Event()
+        self._probe_running = False
+        self._probed_at = 0.0
 
     def _connect(self) -> psycopg.Connection[dict[str, Any]]:
-        return psycopg.connect(self._url, row_factory=dict_row)
+        return psycopg.connect(
+            self._url, row_factory=dict_row, connect_timeout=self._connect_timeout
+        )
 
-    def _migrate(self) -> None:
-        with self._connect() as conn, conn.cursor() as cur:
-            for version, statements in MIGRATIONS:
-                cur.execute(statements)
-                cur.execute(
-                    "INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT DO NOTHING",
-                    (version,),
-                )
-            conn.commit()
-        logger.info("稽核資料表已就緒(schema v%d)", SCHEMA_VERSION)
+    def _ensure_ready(self) -> None:
+        """第一次真正要用資料庫時才建表。連不上就拋 ``AuditBackendUnavailableError``。"""
+        if self._migrated:
+            return
+        with self._lock:
+            if self._migrated:
+                return
+            try:
+                with self._connect() as conn, conn.cursor() as cur:
+                    for version, statements in MIGRATIONS:
+                        cur.execute(statements)
+                        cur.execute(
+                            "INSERT INTO schema_version (version) VALUES (%s) "
+                            "ON CONFLICT DO NOTHING",
+                            (version,),
+                        )
+                    conn.commit()
+            except psycopg.Error as exc:
+                raise AuditBackendUnavailableError(f"稽核資料庫連不上:{exc}") from exc
+            self._migrated = True
+            logger.info("稽核資料表已就緒(schema v%d)", SCHEMA_VERSION)
+
+    def _probe(self) -> None:
+        try:
+            self._ensure_ready()
+            available = True
+        except (AuditBackendUnavailableError, psycopg.Error):
+            available = False
+        self._available = available
+        self._probed_at = time.monotonic()
+        self._probe_running = False
+        self._probed_once.set()
+
+    def is_available(self, *, refresh_seconds: float = 5.0, first_probe_wait: float = 1.0) -> bool:
+        """給 ``/api/health`` 用:回報資料庫現在通不通,**不拋例外也不阻塞**。
+
+        **為什麼探測要在背景做**:連不上的資料庫會讓 ``psycopg.connect`` 等滿
+        連線逾時,而且它對每一個解析出來的位址各等一次(``::1`` 與 ``127.0.0.1``
+        就是兩次)。實測第一次呼叫花了 **10.4 秒**——一個要 10 秒才回應的健康檢查
+        本身就是壞的:監控會逾時,然後回報服務死亡,正好是這個修正要避免的事。
+
+        所以:探測丟到背景執行緒,呼叫端立刻拿到**上一次的結果**。
+        只有 process 剛啟動、還沒有任何結果時,才短暫等一下(``first_probe_wait``),
+        避免第一次健康檢查回報一個純粹是初始值的答案。
+        """
+        now = time.monotonic()
+        with self._probe_lock:
+            stale = now - self._probed_at >= refresh_seconds
+            if stale and not self._probe_running:
+                self._probe_running = True
+                threading.Thread(target=self._probe, daemon=True).start()
+
+        if not self._probed_once.is_set():
+            # 只在完全還沒探測過時等一下下;等不到就先回 False(保守),
+            # 下一次呼叫就會拿到真正的結果
+            self._probed_once.wait(timeout=first_probe_wait)
+        return self._available
 
     def append(
         self,
@@ -115,6 +183,7 @@ class PostgresAuditSink:
         actor: str,
         request_id: str,
     ) -> AuditRecord:
+        self._ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             # 鎖「append 這個動作」而不是某一列——見模組 docstring:FOR UPDATE
             # 擋不住新列插進來,實測會在併發下撞主鍵。鎖在交易結束時自動釋放。
@@ -141,6 +210,7 @@ class PostgresAuditSink:
             return record
 
     def read_all(self) -> list[AuditRecord]:
+        self._ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {_COLUMNS} FROM care_note_audit ORDER BY sequence")
             return [AuditRecord.model_validate(row) for row in cur.fetchall()]
@@ -148,6 +218,7 @@ class PostgresAuditSink:
     # ---- 每日預算的持久化(Phase 1 的計數原本重啟就歸零)----
 
     def budget_spent(self, day: str) -> float:
+        self._ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute("SELECT spent_usd FROM daily_budget WHERE day = %s", (day,))
             row = cur.fetchone()
@@ -156,6 +227,7 @@ class PostgresAuditSink:
     def budget_add(self, day: str, amount: float) -> float:
         """原子累加。用 ``ON CONFLICT DO UPDATE`` 而不是「先讀再寫」——
         後者在併發下會漏記(兩個請求都讀到同一個舊值)。"""
+        self._ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO daily_budget (day, spent_usd) VALUES (%s, %s) "

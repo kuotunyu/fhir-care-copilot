@@ -11,6 +11,7 @@
 """
 
 import json
+import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -301,6 +302,78 @@ class TestOptionalDatabase:
         monkeypatch.setenv("DATABASE_URL", "   ")
 
         assert resolve_audit_sink(tmp_path / "audit.jsonl").backend == "jsonl"
+
+
+class TestBackendDown:
+    """稽核後端連不上時的行為。
+
+    **健康檢查不該因為下游壞掉而失敗。** 監控拿到連線錯誤時,分不出「服務死了」
+    與「資料庫死了」——而這兩件事的處理方式完全不同。這一組鎖住那條線。
+
+    用「連不到的埠」而不是真的停掉容器:不需要 Docker、在 CI 上也跑得到,
+    而且失敗模式(連線逾時)與真的資料庫掛掉是同一種。
+    """
+
+    DEAD_URL = "postgresql://copilot:copilot@127.0.0.1:59999/nonexistent"
+
+    @pytest.fixture
+    def dead_db_client(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> Iterator[TestClient]:
+        pytest.importorskip("psycopg", reason="沒裝 postgres extra 就沒有這條路徑")
+        monkeypatch.setenv("FHIR_COPILOT_DATA_DIR", str(FIXTURES_DIR))
+        monkeypatch.setenv("FHIR_COPILOT_PROVIDER", "mock")
+        monkeypatch.setenv("FHIR_COPILOT_AUDIT_LOG_PATH", str(tmp_path / "care_notes.jsonl"))
+        clear_ops_env(monkeypatch)
+        monkeypatch.setenv("FHIR_COPILOT_OPS_CONFIG", str(write_ops_config(tmp_path / "ops.yaml")))
+        monkeypatch.setenv("DATABASE_URL", self.DEAD_URL)
+        dependencies.reset_caches()
+        with TestClient(create_app()) as client:
+            yield client
+        dependencies.reset_caches()
+
+    def test_service_starts_at_all(self, dead_db_client: TestClient) -> None:
+        """建構稽核 sink 時**不連線**。連線在建構時做的話,資料庫掛掉就等於
+        整個服務起不來——包括那些根本不需要資料庫的唯讀端點。"""
+        assert dead_db_client.get("/api/patients").status_code == 200
+
+    def test_health_reports_degraded_instead_of_dying(self, dead_db_client: TestClient) -> None:
+        response = dead_db_client.get("/api/health")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "degraded"
+        assert body["audit_backend"] == "postgres"
+        assert body["audit_available"] is False
+
+    def test_health_stays_responsive(self, dead_db_client: TestClient) -> None:
+        """探測在背景做,所以健康檢查不會被連線逾時卡住。
+
+        沒有這一條的話,健康檢查會等滿連線逾時——實測 10.4 秒,而且 psycopg 對
+        每個解析出來的位址各等一次。一個要 10 秒才回應的健康檢查本身就是壞的:
+        監控會逾時,然後回報服務死亡,正好是這個修正要避免的事。
+        """
+        dead_db_client.get("/api/health")  # 第一次會等背景探測起步
+
+        started = time.perf_counter()
+        for _ in range(3):
+            assert dead_db_client.get("/api/health").status_code == 200
+        elapsed = time.perf_counter() - started
+
+        # 寬鬆的上限:要抓的是「有沒有等滿連線逾時」這種數量級的問題
+        assert elapsed < 6.0, f"三次健康檢查花了 {elapsed:.1f} 秒,探測沒有真的在背景做"
+
+    def test_chat_fails_closed_with_a_structured_error(self, dead_db_client: TestClient) -> None:
+        """讀不到預算計數就不要再花錢——與 estimate_cost_usd 缺單價時 raise 同一個
+        原則。回 503 結構化拒絕,不是 500 stack trace。"""
+        response = dead_db_client.post(
+            "/api/chat", json={"patient_id": AMY_ID, "question": "他在吃什麼藥?"}
+        )
+
+        assert response.status_code == 503
+        body = response.json()
+        assert body["error_code"] == "budget_unavailable"
+        assert isinstance(body["detail"], str)
 
 
 @pytest.fixture
