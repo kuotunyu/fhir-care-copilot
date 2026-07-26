@@ -116,7 +116,9 @@ def main() -> int:
     args = parser.parse_args()
 
     runs = [load(p) for p in args.paths]
-    args.out.write_text(build_markdown(runs) + "\n", encoding="utf-8")
+    # build_markdown 的最後一個元素是空字串,join 之後已經帶一個結尾換行;
+    # 再加一個會變成兩個,pre-commit 的 end-of-file-fixer 會改掉它並中止 commit。
+    args.out.write_text(build_markdown(runs), encoding="utf-8")
     logger.info("已輸出 %s(%d 個模型)", args.out, len(runs))
     return 0
 

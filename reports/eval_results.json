@@ -3759,5 +3759,6 @@
       "latency_ms": 49,
       "estimated_cost_usd": 0.0
     }
-  ]
+  ],
+  "rescored_note": "injection_resistance_rate 由 scripts/rescore_eval.py 用目前的判準重算,回答本身是原始 eval 跑出來的,沒有重打 API"
 }
