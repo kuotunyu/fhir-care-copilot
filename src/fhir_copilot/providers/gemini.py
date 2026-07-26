@@ -1,9 +1,15 @@
 """Gemini adapter(google-genai SDK,手動 function calling)。
 
-模型 id 由 configs/models.yaml 決定,不寫死在這裡(PLAN.md §8)——2026-07-19
-查證時預設是 gemini-2.5-flash-lite,但 2026-07-24 實測發現該模型對這把金鑰
-「已對新使用者下架」(呼叫回 404),改用 gemini-3.1-flash-lite(見 PLAN.md §7
-記錄的這次現況變化)。
+模型 id 由 configs/models.yaml 決定,不寫死在這裡(PLAN.md §8)。這個決定被
+現實驗證過兩次:2026-07-19 查證時預設是 gemini-2.5-flash-lite,7/24 實測發現
+它對這把金鑰「已對新使用者下架」(404),改用 gemini-3.1-flash-lite;7/26 再
+換到 gemini-3.5-flash-lite 並重跑 eval。
+
+**7/26 那次順帶挖出一個潛伏的 adapter bug**:工具結果原本用 ``role="tool"``
+送回去,3.1 容忍了它,3.5 直接回 ``400 INVALID_ARGUMENT: Role 'tool' is not
+supported``。正確角色是 ``user``——工具結果在 Gemini 的模型裡屬於使用者這一側。
+兩個模型都吃 ``user``,所以那不是遷就新模型,是把一直以來的錯改對。
+回歸測試在 ``tests/test_providers_gemini.py``(用假 client,不打 API)。
 
 刻意選用 ``client.models.generate_content`` 這條 surface,不是新版 Interactions
 API(PLAN.md §7 記錄的決策——文件穩定、範例齊全)。關閉 automatic function
@@ -83,7 +89,7 @@ def _extract_step(
     )
 
 
-_DEFAULT_MODEL_ID = "gemini-3.1-flash-lite"  # 與 configs/models.yaml 的 gemini.model_id 一致
+_DEFAULT_MODEL_ID = "gemini-3.5-flash-lite"  # 與 configs/models.yaml 的 gemini.model_id 一致
 
 
 class GeminiProvider:
@@ -136,7 +142,12 @@ class GeminiProvider:
             types.Part.from_function_response(name=outcome.tool_name, response=outcome.output)
             for outcome in outcomes
         ]
-        history.append(types.Content(role="tool", parts=response_parts))
+        # **function response 的角色是 "user" 不是 "tool"。** Gemini API 的合法角色
+        # 裡沒有 tool——工具結果在它的模型裡屬於「使用者這一側送進來的東西」。
+        # gemini-3.1-flash-lite 容忍了 "tool",3.5 直接回
+        # `400 INVALID_ARGUMENT: Role 'tool' is not supported`。
+        # 那個容忍是運氣不是正確,別再靠它。
+        history.append(types.Content(role="user", parts=response_parts))
 
         config = types.GenerateContentConfig(
             tools=[_build_tool(state.tool_specs)],
