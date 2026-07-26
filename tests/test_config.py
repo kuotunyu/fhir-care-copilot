@@ -26,7 +26,7 @@ def test_load_providers_default_is_mock() -> None:
 
     assert default == "mock"
     assert providers["mock"].model_id == "mock-deterministic"
-    assert providers["gemini"].model_id == "gemini-3.5-flash-lite"
+    assert providers["gemini"].model_id == "gemini-3.1-flash-lite"
     assert providers["gemini"].api_key_env == "GEMINI_API_KEY"
     assert providers["openai"].model_id == "gpt-5.4-mini"
 

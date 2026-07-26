@@ -117,5 +117,5 @@ def test_list_providers_returns_configured_model_ids(client: TestClient) -> None
     assert response.status_code == 200
     body = response.json()
     assert body["mock"] == "mock-deterministic"
-    assert body["gemini"] == "gemini-3.5-flash-lite"
+    assert body["gemini"] == "gemini-3.1-flash-lite"
     assert body["openai"] == "gpt-5.4-mini"
