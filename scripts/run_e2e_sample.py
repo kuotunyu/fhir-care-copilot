@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from _env import load_env_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "reports"
 logger = logging.getLogger("run_e2e_sample")
@@ -51,22 +53,6 @@ QUESTIONS = (
     "最近的生命徵象量測結果如何?",
     "目前的照護計畫有哪些項目?",
 )
-
-
-def load_env_file(path: Path) -> None:
-    """把 .env 讀進環境變數。
-
-    專案的程式碼**刻意不讀 .env**(secret 只從環境變數來),但這支腳本是給人
-    互動式跑的,每次手動 export 一長串太容易忘。已經在環境裡的值優先。
-    """
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def http_json(url: str, payload: dict[str, Any] | None = None, timeout: float = 120.0) -> Any:

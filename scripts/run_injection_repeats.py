@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from _env import load_env_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT_DIR = REPO_ROOT / "reports" / "injection_repeats"
 logger = logging.getLogger("run_injection_repeats")
@@ -54,20 +56,6 @@ MODELS: tuple[tuple[str, str, str | None], ...] = (
 # Gemini 免費層 15 req/min,一題兩次呼叫;OpenAI 沒觀察到類似限制
 PACE_SECONDS = {"gemini": 10.0, "openai": 0.0}
 EXPECTED_CASES = 20
-
-
-def load_env_file(path: Path) -> None:
-    """專案的程式碼刻意不讀 .env(secret 只從環境變數來),互動式跑要自己注入。"""
-    import os
-
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def run_once(label: str, provider_name: str, model_id: str | None, out_path: Path) -> bool:
