@@ -101,7 +101,7 @@ class PostgresAuditSink:
         self._migrated = False
         # 可用性探測的狀態。探測**在背景執行緒做**,見 is_available()。
         #
-        # 探測用**另一把鎖**:背景探測會呼叫 _ensure_ready(),而那裡持有 _lock
+        # 探測用**另一把鎖**:背景探測會呼叫 ensure_ready(),而那裡持有 _lock
         # 長達整個連線逾時。共用同一把鎖的話,健康檢查會卡在鎖上等探測結束——
         # 實測那讓一次健康檢查花了 8.9 秒,等於背景探測完全白做。
         self._probe_lock = threading.Lock()
@@ -115,8 +115,15 @@ class PostgresAuditSink:
             self._url, row_factory=dict_row, connect_timeout=self._connect_timeout
         )
 
-    def _ensure_ready(self) -> None:
-        """第一次真正要用資料庫時才建表。連不上就拋 ``AuditBackendUnavailableError``。"""
+    def ensure_ready(self) -> None:
+        """建表。正式路徑上由每個資料庫操作**惰性**呼叫,連不上就拋
+        ``AuditBackendUnavailableError``。
+
+        **刻意是公開方法**:建表在建構時做的話,資料庫暫時不可用會讓整個服務起不來
+        (見 ``__init__``),但「什麼時候建表」不該因此變成一件說不清楚的事。
+        留一個明確的入口,讓測試與 migration 工具可以主動把 schema 準備好,
+        而不是靠某個操作順便建。
+        """
         if self._migrated:
             return
         with self._lock:
@@ -139,7 +146,7 @@ class PostgresAuditSink:
 
     def _probe(self) -> None:
         try:
-            self._ensure_ready()
+            self.ensure_ready()
             available = True
         except (AuditBackendUnavailableError, psycopg.Error):
             available = False
@@ -183,7 +190,7 @@ class PostgresAuditSink:
         actor: str,
         request_id: str,
     ) -> AuditRecord:
-        self._ensure_ready()
+        self.ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             # 鎖「append 這個動作」而不是某一列——見模組 docstring:FOR UPDATE
             # 擋不住新列插進來,實測會在併發下撞主鍵。鎖在交易結束時自動釋放。
@@ -210,7 +217,7 @@ class PostgresAuditSink:
             return record
 
     def read_all(self) -> list[AuditRecord]:
-        self._ensure_ready()
+        self.ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {_COLUMNS} FROM care_note_audit ORDER BY sequence")
             return [AuditRecord.model_validate(row) for row in cur.fetchall()]
@@ -218,7 +225,7 @@ class PostgresAuditSink:
     # ---- 每日預算的持久化(Phase 1 的計數原本重啟就歸零)----
 
     def budget_spent(self, day: str) -> float:
-        self._ensure_ready()
+        self.ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute("SELECT spent_usd FROM daily_budget WHERE day = %s", (day,))
             row = cur.fetchone()
@@ -227,7 +234,7 @@ class PostgresAuditSink:
     def budget_add(self, day: str, amount: float) -> float:
         """原子累加。用 ``ON CONFLICT DO UPDATE`` 而不是「先讀再寫」——
         後者在併發下會漏記(兩個請求都讀到同一個舊值)。"""
-        self._ensure_ready()
+        self.ensure_ready()
         with self._connect() as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO daily_budget (day, spent_usd) VALUES (%s, %s) "

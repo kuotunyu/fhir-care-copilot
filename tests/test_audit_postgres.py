@@ -32,6 +32,9 @@ def sink() -> Iterator[object]:
     from fhir_copilot.ops.audit.postgres import PostgresAuditSink
 
     instance = PostgresAuditSink(DATABASE_URL)
+    # 建表是惰性的(資料庫暫時不可用不該讓服務起不來),所以這裡要**主動**把 schema
+    # 準備好——否則下面的 TRUNCATE 會打到一張還不存在的表。
+    instance.ensure_ready()
     # 每個測試從乾淨的表開始。**只有測試會 truncate**——正式路徑上這張表
     # 沒有任何 delete/update 的入口。
     import psycopg
@@ -52,6 +55,57 @@ def append(sink: object, note_text: str) -> object:
         actor="tester",
         request_id="req-1",
     )
+
+
+def drop_everything() -> None:
+    import psycopg
+
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS care_note_audit, daily_budget, schema_version")
+        conn.commit()
+
+
+class TestColdStart:
+    """全新的 sink 打一個什麼都沒有的資料庫——服務第一次啟動時的正式路徑。
+
+    **這條路徑不能靠上面的 fixture 驗證**:fixture 為了 TRUNCATE 已經先把 schema
+    準備好了,所以它反而把「惰性建表到底有沒有作用」這件事遮住。這裡把表整個
+    drop 掉再來一次。
+
+    這組測試存在的理由是一次真實的回歸:建表從建構子搬到惰性呼叫之後,
+    fixture 的 TRUNCATE 打到一張還不存在的表,整個 Postgres job 六個測試全掛。
+    """
+
+    def test_first_write_creates_the_schema(self) -> None:
+        from fhir_copilot.ops.audit.postgres import PostgresAuditSink
+
+        drop_everything()
+        fresh = PostgresAuditSink(DATABASE_URL)
+        # 刻意不呼叫 ensure_ready():append 自己要把表建起來
+        record = append(fresh, "第一筆")
+
+        assert record.sequence == 0  # type: ignore[attr-defined]
+        assert verify_chain(fresh.read_all()).ok is True
+
+    def test_migration_is_recorded(self) -> None:
+        """schema_version 有沒有真的寫進去。沒人檢查的話,migration 記錄壞掉不會有人發現。"""
+        import psycopg
+
+        from fhir_copilot.ops.audit.postgres import SCHEMA_VERSION, PostgresAuditSink
+
+        drop_everything()
+        PostgresAuditSink(DATABASE_URL).ensure_ready()
+
+        with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+            cur.execute("SELECT version FROM schema_version ORDER BY version")
+            assert [row[0] for row in cur.fetchall()] == [SCHEMA_VERSION]
+
+    def test_reading_an_untouched_database_is_empty_not_an_error(self) -> None:
+        """驗證腳本與健康檢查會在還沒有任何紀錄時就讀。那是空的,不是錯的。"""
+        from fhir_copilot.ops.audit.postgres import PostgresAuditSink
+
+        drop_everything()
+        assert PostgresAuditSink(DATABASE_URL).read_all() == []
 
 
 class TestPostgresChain:
@@ -101,8 +155,11 @@ class TestPostgresConcurrency:
     def test_concurrent_appends_do_not_fork_the_chain(self, sink: object) -> None:
         """這是 Postgres 模式相對於檔案模式的核心價值:**跨連線**的併發安全。
 
-        沒有交易內的 FOR UPDATE 鎖住鏈尾的話,兩個同時進來的寫入會讀到同一列
+        沒有在交易內鎖住 append 這個動作的話,兩個同時進來的寫入會讀到同一列
         當作前一列,產生兩列 prev_hash 相同的紀錄——筆數是對的,但鏈已經分叉。
+
+        鎖用的是 advisory lock 不是 ``FOR UPDATE``,理由見 ``postgres.py`` 的
+        模組 docstring(``FOR UPDATE`` 擋不住新列插進來,實測會撞主鍵)。
         """
         total = 40
         with ThreadPoolExecutor(max_workers=12) as pool:

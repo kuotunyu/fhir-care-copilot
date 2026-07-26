@@ -72,8 +72,10 @@ build 會下載 85 MB Synthea 樣本烤進 image,第一次約數分鐘。
 
 | 動作 | 指令 |
 |---|---|
-| 起 Postgres(db-only profile) | `docker compose --profile db up -d postgres` |
-| 跑 Postgres 整合測試 | `DATABASE_URL=postgresql://copilot:copilot@localhost:5432/copilot uv run pytest tests/test_audit_postgres.py` |
+| **整組跑(等同 CI 的 postgres job)** | **`just check-db`** — 起 DB、等 healthy、跑整合測試、跑驗證腳本 |
+| 收掉測試資料庫 | `just check-db-down` |
+| 只起 Postgres(db-only profile) | `docker compose --profile db up -d --wait postgres` |
+| 只跑整合測試 | `DATABASE_URL=postgresql://copilot:copilot@localhost:5432/copilot uv run pytest tests/test_audit_postgres.py` |
 | 驗證稽核鏈 | `uv run python scripts/verify_audit_chain.py`(exit 1 = 有問題) |
 | 裝 postgres extra | `uv sync --extra postgres` |
 
@@ -83,8 +85,14 @@ build 會下載 85 MB Synthea 樣本烤進 image,第一次約數分鐘。
   但兩個併發 append 會各自鎖住同一列、然後都插入 `N+1` → 主鍵衝突;表是空的時候
   更徹底(沒有列可鎖)。要用 `pg_advisory_xact_lock` 鎖「append 這個動作」。
   **這個 bug 用 mock 測不到,一定要對真的 Postgres 跑**
-- 沒有 `DATABASE_URL` 時 Postgres 測試會整組 skip——看到 `6 skipped` 是正常的,
-  不是測試壞了
+- **`just check` 看到的 `N skipped` 不是綠燈,是「這幾件事還沒測」。** 沒有
+  `DATABASE_URL` 時 Postgres 測試整組 skip,而**唯一會用到 `postgres.py` 的路徑
+  就在那一組裡**。實際發生過:建表從建構子搬到惰性呼叫之後,本機 `just check`
+  全綠、CI 上六個測試全掛(fixture 的 `TRUNCATE` 打到一張還不存在的表)。
+  **改過 `ops/audit/postgres.py` 或它的測試就跑 `just check-db`**,別讓 skip 冒充通過
+- 建表是**惰性**的(`ensure_ready()`,資料庫暫時不可用不該讓服務起不來),所以
+  「全新 sink 打全新資料庫」是一條真正的正式路徑,由 `TestColdStart` 專門守著——
+  fixture 為了 `TRUNCATE` 會先把 schema 準備好,反而遮住這條路徑
 - `docker compose up` 預設**不會重建 image**。改了程式之後要 `--build`,
   否則會拿到舊的 image 而症狀是「新欄位不見了」
 
@@ -131,7 +139,9 @@ FHIR_COPILOT_MOCK_FAILURE_SEED=42    # 失敗序列可重現
 
 ## session / milestone 收尾 checklist
 
-1. `just check`(或 `uv run pytest` 等)全綠——失敗就修,修不完照實記錄
+1. `just check`(或 `uv run pytest` 等)全綠——失敗就修,修不完照實記錄。
+   **輸出裡的 `N skipped` 要逐項確認是「這個環境本來就不該跑」還是「我剛好沒測到」**;
+   碰過 `ops/audit/postgres.py` 就再跑一次 `just check-db`
 2. `docs/PROGRESS.md` **最上方**新增一節:日期、做了什麼、**真實測試輸出**、決策/發現、下一步
 3. milestone 全部驗收達成才勾 `PLAN.md` §3 checkbox
 4. git commit(訊息格式:`M<N>: <摘要>`)

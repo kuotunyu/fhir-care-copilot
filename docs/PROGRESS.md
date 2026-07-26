@@ -6,6 +6,109 @@
 
 ---
 
+## 2026-07-26（續）— CI 抓到一個本機測不到的回歸
+
+**發生什麼事**
+
+Phase 5 的三個 commit push 上去之後，CI 的 `postgres` job 六個測試全部 error：
+
+```
+psycopg.errors.UndefinedTable: relation "care_note_audit" does not exist
+ERROR tests/test_audit_postgres.py::TestPostgresChain::test_appends_build_a_valid_chain
+ERROR tests/test_audit_postgres.py::TestPostgresChain::test_tampering_in_the_database_is_detected
+ERROR tests/test_audit_postgres.py::TestPostgresChain::test_deleting_a_row_in_the_database_is_detected
+ERROR tests/test_audit_postgres.py::TestPostgresConcurrency::test_concurrent_appends_do_not_fork_the_chain
+ERROR tests/test_audit_postgres.py::TestPersistentBudget::test_budget_survives_a_new_instance
+ERROR tests/test_audit_postgres.py::TestPersistentBudget::test_concurrent_records_do_not_lose_spend
+============================== 6 errors in 0.32s ===============================
+```
+
+`check`（ubuntu + windows）與 `docker` 三個 job 都是綠的，只有 `postgres` 掛。
+
+**原因**
+
+前一節那個修正把建表從建構子搬成惰性呼叫（資料庫暫時不可用不該讓整個服務起不來）。
+測試 fixture 建完 sink 之後直接 `TRUNCATE care_note_audit`，而那張表這時還不存在。
+
+**為什麼本機沒抓到——這才是重點**
+
+前一節記的是「249 passed, **6 skipped**」。那 6 個 skip 正是這一組 Postgres 整合測試
+（沒有 `DATABASE_URL` 就整組跳過），也就是**唯一會用到 `postgres.py` 的路徑**。
+我改了 `postgres.py`，然後用一個不會執行它的測試回合宣稱通過。
+
+更糟的是 `.claude/skills/dev-loop/SKILL.md` 裡當時寫著「看到 `6 skipped` 是正常的，
+不是測試壞了」——那句話本身沒錯，但它讓 skip 看起來像綠燈。已改掉。
+
+**做了什麼**
+
+- `_ensure_ready()` 改成公開的 `ensure_ready()`。建表在正式路徑上仍然是惰性的，
+  但「什麼時候建表」現在有一個明確的入口，測試與 migration 工具可以主動呼叫，
+  而不是靠某個操作順便建
+- fixture 在 `TRUNCATE` 之前先 `ensure_ready()`
+- **補 `TestColdStart` 三個測試**：修掉 fixture 之後，每個測試都從「schema 已存在」
+  開始，反而沒有任何測試走「全新 sink 打全新資料庫」那條正式路徑。新測試把表
+  整個 drop 掉再來一次，涵蓋惰性建表、migration 版本記錄、空資料庫讀取
+- `just check-db` / `just check-db-down`：起 DB、等 healthy、跑整合測試、跑驗證腳本，
+  一道指令。以前要手打 `DATABASE_URL=...`，門檻高到會被略過
+- dev-loop skill 的 Postgres 段落改寫：`N skipped` 不是綠燈，是還沒測
+
+**真實測試輸出**
+
+新測試不是假的——把 `append()` 裡的 `ensure_ready()` 拿掉之後它真的會垮，
+而且垮在跟 CI 一模一樣的地方：
+
+```
+$ (暫時移除 append() 的 ensure_ready() 之後)
+E           psycopg.errors.UndefinedTable: relation "care_note_audit" does not exist
+FAILED tests/test_audit_postgres.py::TestColdStart::test_first_write_creates_the_schema
+```
+
+還原後，對一個**全新、一張表都沒有**的 Postgres 17 容器跑：
+
+```
+$ docker compose --profile db exec -T postgres psql -U copilot -d copilot -c "\dt"
+Did not find any relations.
+
+$ just check-db
+ Container 1_fhircarecopilot-postgres-1 Healthy
+tests\test_audit_postgres.py .........                                   [100%]
+============================== 9 passed in 0.86s ==============================
+稽核軌跡使用 Postgres 後端
+後端:postgres(Postgres)
+稽核資料表已就緒(schema v1)
+稽核軌跡是空的——沒有東西可以驗證。
+```
+
+沒有 `DATABASE_URL` 的一般回合：
+
+```
+$ just check
+All checks passed!
+93 files already formatted
+Success: no issues found in 93 source files
+249 passed, 9 skipped in 10.31s
+```
+
+**決策/發現**
+
+**1. 「等效驗證的盲區」這次是自己踩的。** M7 那次的教訓是「被替代掉的那一層就是測不到的
+那一層」。這次是同一件事換一個形狀：**被 skip 掉的那一組，就是唯一測得到這個改動的那一組。**
+`N skipped` 在輸出裡長得跟綠燈一樣，這是它危險的地方。
+
+**2. 修 fixture 會製造新的盲區。** fixture 加了 `ensure_ready()` 之後，所有測試都從
+「schema 已存在」出發——正式路徑上的第一次寫入反而沒人測。修測試的時候要問一句
+**「我這樣修，是不是把某條路徑一起遮掉了」**。`TestColdStart` 就是為此補的。
+
+**3. 讓正確的事變便宜。** 這次的根本問題不是不知道要對真資料庫跑，是那件事要手打一長串
+環境變數。`just check-db` 把它變成一道指令——**流程紀律要靠降低成本，不能靠記得。**
+
+**下一步**
+
+- 推上去看 CI 的 `postgres` job 是否轉綠（本機已用同樣條件驗過）
+- 端到端效能那一軌仍未執行（需要授權花費與選 provider）
+
+---
+
 ## 2026-07-26 — 營運層 Phase 5（負載對照、故障注入、README 改寫）
 
 **這個 Phase 要回答的問題**

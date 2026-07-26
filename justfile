@@ -42,6 +42,24 @@ precommit:
 hooks:
     git config core.hooksPath scripts/git-hooks
 
+# ---- 營運層:Postgres 稽核後端 ----
+
+# 對**真的** Postgres 跑稽核軌跡的整合測試(等同 CI 的 postgres job)。
+#
+# 為什麼要有這條:`just check` 沒有 DATABASE_URL,這一組會被靜靜跳過。
+# **「N skipped」不是綠燈,是「這幾件事還沒測」**——改過 ops/audit/postgres.py
+# 之後只跑 `just check` 就宣稱通過,等於沒測到唯一會用它的那條路徑。
+# 這條 recipe 存在的理由是一次真實的回歸:建表改成惰性之後本機全綠,CI 上
+# 六個測試全掛。
+check-db:
+    docker compose --profile db up -d --wait postgres
+    $env:DATABASE_URL = "postgresql://copilot:copilot@localhost:5432/copilot"; uv run pytest tests/test_audit_postgres.py -v
+    $env:DATABASE_URL = "postgresql://copilot:copilot@localhost:5432/copilot"; uv run python scripts/verify_audit_chain.py
+
+# 收掉本機的測試資料庫
+check-db-down:
+    docker compose --profile db down -v
+
 # ---- 營運層:負載測試 ----
 
 # 負載測試基線(需要 k6:winget install --id GrafanaLabs.k6 -e)。
