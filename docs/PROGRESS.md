@@ -6,6 +6,99 @@
 
 ---
 
+## 2026-07-28（續）— Space 換上專屬金鑰;過程中發現兩把備援一直是死的
+
+demo 與開發共用同一份免費層額度,跑一次全量 eval 就可能讓 demo 當天只剩拒答
+——今天下午就發生過。這一節把它們分開。
+
+### 一、腳本少了兩件事,而兩個缺口都會安靜地失敗
+
+**`--unset-secret`**:腳本能 `add_space_secret`,不能刪。換金鑰時只設新的、
+不移除舊的,那幾把開發用的備援會**永遠留在雲端服務的設定裡**。
+順序是「先移除 → 再設定 → 上傳 → 重啟」,與既有的 secret-before-upload 同理由。
+
+**`--set-secret-from-env-as LOCAL:SPACE`**:本機的環境變數必須叫別的名字
+(才不會蓋掉開發用的那把),但 Space 上必須叫 `GEMINI_API_KEY`——那是
+`models.yaml` 的 `api_key_env`。名字對不上時 `resolve_provider_name()` 會
+**安靜退回 mock**。與 07-26 那次同一個坑,成因從「順序錯」換成「名字對不上」。
+
+### 二、使用者要求「先確認金鑰能用」,那個要求攔下一次會安靜失敗的部署
+
+推上去之前先在本機**單獨**驗新金鑰(刻意不帶 failover——帶了的話新金鑰壞掉
+也會被備援救起來,等於沒驗)。結果:
+
+```
+429 RESOURCE_EXHAUSTED
+'Your prepayment credits are depleted.'
+```
+
+如果照原計畫直接推:Space 會成功重啟、`/api/health` 會回 `provider: gemini`
+(金鑰有設、名字也對)、UI 一切正常——**但每一題都會回結構化拒答**,
+而那句「AI 服務暫時無法回應,請稍後再試」看起來像暫時性故障,實際上是永久的。
+
+### 三、逐把測完,發現兩把備援從一開始就是死的
+
+每把只打一次最小呼叫:
+
+```
+GEMINI_API_KEY          …AU7g  可用(免費層)
+GEMINI_API_KEY_BACKUP   …ZaLw  429 prepayment credits depleted
+GEMINI_API_KEY_BACKUP2  …rG7g  429 prepayment credits depleted
+GEMINI_API_KEY_BACKUP3  …OmqQ  可用(免費層,與主金鑰不同專案)
+GEMINI_API_KEY_SPACE    …1PIg  429 prepayment credits depleted
+```
+
+三把不能用的都掛在同一個預付額度已耗盡的帳單帳戶下。**那不是「今天用完了」,
+是從設定進去就不能用**——付費層沒有免費額度,隔天也不會重置。
+
+也就是說 `backup_api_key_envs` 裡有兩把一直是死的,而 failover 每次主金鑰配額
+用完都會老實去試它們。**今天下午日誌裡那三行「配額用完,切換備援金鑰」,
+有兩行是在試死金鑰**——我當時還拿它當證據推論「同專案的備援會一起用完」,
+推論的方向對,但依據是錯的。
+
+### 四、再申請新金鑰沒有用
+
+使用者又申請了一把(後 4 碼 `1PIg` → `OX7A`),**錯誤一模一樣**。
+
+問題不在金鑰也不在專案,在**帳單帳戶**:AI Studio 建的新專案會自動連到那個
+額度耗盡的帳戶,而**一旦專案連上帳單帳戶,Gemini API 就當它是 Tier 1**
+——付費層沒有免費額度。能用的那兩把之所以能用,正是因為它們的專案**沒有**
+連帳單(也因此不出現在 AI Studio 的金鑰清單裡)。
+
+**綁到一個耗盡的付費帳戶,比留在免費層更糟。** 這一點寫進 README,
+因為「開新專案就有新額度」是很自然但錯誤的直覺。
+
+### 五、最後的配置:零成本
+
+不必申請任何東西——`_BACKUP3` 本來就可用、在獨立專案、免費層。
+
+| | 金鑰 | 備援 |
+|---|---|---|
+| 本機開發 / eval | `AU7g` | 無(`backup_api_key_envs: []`) |
+| HF Space | `OmqQ`(原 `_BACKUP3`) | 無 |
+
+`models.yaml` 的備援清單清空:兩把是死的,`_BACKUP3` 改專供 Space
+——本機列了它的話,eval 會在主金鑰用完時跳去吃 Space 的額度,等於沒分開。
+
+### 六、線上驗證
+
+```json
+{"refused": false, "refusal_reason": null,
+ "evidence": [5 筆 Condition/{id}],
+ "latency_ms": 1336, "estimated_cost_usd": 0.00074675}
+```
+
+1336 ms——比今天下午 503 期間的 12897 ms 正常太多。回應裡有 `refusal_reason`
+欄位,代表最新程式碼確實部署上去了。
+
+### 七、下一步
+
+- 那三把不能用的金鑰要救的話,得到 Google Cloud Console 把專案的帳單連結停用,
+  讓它掉回免費層。**但不要碰 `AU7g` 與 `OmqQ` 的專案**——它們現在正常
+- 專案本身沒有待辦了
+
+---
+
 ## 2026-07-28 — 掃一次文件漂移，並把「清單沒跟上」變成測試
 
 前一節結尾列的下一步是「藥物過敏的臨床用途要能展示」。**那一項刻意不做**:
