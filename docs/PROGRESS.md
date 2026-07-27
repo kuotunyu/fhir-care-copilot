@@ -6,6 +6,85 @@
 
 ---
 
+## 2026-07-28（續二）— 內部工作文件退出 git;被它們支撐的那個宣稱要先搬家
+
+`PLAN.md`(milestone 追蹤)、`CLAUDE.md`(AI 助理工作約定)、`.claude/`(編輯器與
+skill 設定)三者對讀者沒有意義,改為不追蹤(檔案留在本機,不是刪除)。
+
+### 一、真正的成本不在移除,在「誰在依賴它們」
+
+先掃了一次依賴,結果比預期大:
+
+| 被引用者 | 引用處 | 性質 |
+|---|---|---|
+| `PLAN.md` | 約 45 處 | README 一條 markdown 連結(會 404),其餘是原始碼 docstring 與 ADR 的純文字麵包屑 |
+| `CLAUDE.md` | 1 處 | PROGRESS 的歷史紀錄,不影響 |
+| `.claude/` | 8 處 | **README 一條 markdown 連結**、MODEL_CARD、`reports/README.md`、兩份 `model_comparison*.md`,以及**產生那兩份報告的 `generate_model_comparison.py`** |
+
+`.claude/` 那條是有實質內容的:README 寫著「各判準的侷限已誠實記錄在
+`.claude/skills/run-eval/SKILL.md`」。**直接移除的話,那句話就變成指向不存在的檔案
+——一個宣稱「不隱藏、不美化」的專案,把侷限說明藏起來,那條紀律就是空的。**
+
+而 `publish_to_hf.py` 的排除清單裡本來就寫著特例:「`.claude/` 只排除設定檔,
+skills 照上傳,因為 README 連到它」。那個特例的存在本身就是證據。
+
+### 二、所以先搬家再移除:新增 `docs/EVAL.md`
+
+把 SKILL.md 裡**面向讀者**的部分(題目怎麼產生、六項指標怎麼算、四個判準侷限、
+mock 數字怎麼解讀、速率限制與預算守門)搬成公開文件;留在 skill 裡的是操作面的
+東西(指令、金鑰、給助理的流程)。
+
+搬的時候順手修掉兩個漂移:
+
+- SKILL.md 標題寫「六種題型」,`EvalCategory` 實際是**八種**(後來加了 `allergy`
+  與 `out_of_scope`)。`eval/cases.py` 的 docstring 也還寫著「七種」
+- MODEL_CARD 寫著「同專案的備援金鑰會一起用完」——**那是前一節那個被推翻的推論**,
+  改成正確的說法(配額 per project,但專案一連上帳單帳戶就變付費層,而付費層沒有
+  免費額度)
+
+### 三、Space 的標準跟 repo 一致
+
+`publish_to_hf.py` 的排除清單加上 `.claude/*`、`PLAN.md`、`CLAUDE.md`。
+Space 也是公開的,只從 git 移除、卻繼續上傳到 Space,等於沒移除。
+
+### 四、驗證
+
+```
+ruff check      All checks passed!
+ruff format     106 files already formatted
+mypy            Success: no issues found in 106 source files
+pytest          34 檔 501 測試,exit 0(9 skipped = Postgres,本次未動該模組)
+```
+
+上傳集模擬(`_simulate_upload()`,決定 Space 上實際會有哪些檔案):
+
+```
+不在 PLAN.md          不在 CLAUDE.md      不在 .claude/skills/run-eval/SKILL.md
+  在 docs/EVAL.md       在 README.md
+.claude/ 底下還會上傳:無
+README 死連結:無
+上傳總檔數:190
+```
+
+最後那兩行是重點:`test_readme_links_all_resolve_after_upload` 這條測試存在的理由,
+就是「改 README 時連到不會上傳的東西」要當場紅,不必等發布後點開才發現 404。
+這次正是它守的那個情境,而它是綠的。
+
+### 五、刻意沒做的一件事
+
+那約 45 處 `(PLAN.md §7)`、`(PLAN.md M3)` 的 docstring 麵包屑**沒有清掉**。
+它們是純文字不是連結,不會 404,但確實指向一份讀者看不到的文件。
+
+沒做的理由:一次改動 40 個原始碼檔案只為了拿掉註解裡的括號,diff 大、回歸風險
+不對稱,而收益是純美觀的。列為待辦,要做的話應該是獨立一個 commit。
+
+### 六、下一步
+
+- (選配)掃掉原始碼 docstring 裡指向 `PLAN.md` 的麵包屑
+- 專案本身沒有待辦
+
+---
+
 ## 2026-07-28（續）— Space 換上專屬金鑰;過程中發現兩把備援一直是死的
 
 demo 與開發共用同一份免費層額度,跑一次全量 eval 就可能讓 demo 當天只剩拒答
