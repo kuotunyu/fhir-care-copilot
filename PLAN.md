@@ -1,6 +1,9 @@
 # FHIR Care Copilot — 實作計畫（權威版本）
 
-> **狀態**：M0–M7 完成（2026-07-24，M7 的 `docker build` 現場驗證因本機 Docker Desktop 環境問題受阻，已用等效方式驗證，詳見 §3 M7 與 PROGRESS.md）
+> **狀態**（2026-07-28）：M0–M7 + 營運層 Phase 0–5 + 上線之後的收尾（§3.2）全部完成。
+> 線上 demo：https://huggingface.co/spaces/steven0226/fhir-care-copilot（跑真實模型，不是 demo mode）。
+> 後端 492 測試 + 前端 35 測試，CI 五個 job（雙 OS 檢查、Postgres、前端、Docker）全綠。
+> **沒有待辦的 milestone。** 剩下的都是「需要決策而不是實作」的事，記在 §10 風險表與各 CARD 的已知限制。
 > **建立日期**：2026-07-19｜**外部事實查證日期**:2026-07-19（10 個研究/驗證 agents、51 個來源 URL 逐一 fetch 驗證）
 > **使用方式**：每次實作 session 開始前，先讀本檔 + `docs/PROGRESS.md` 最末節。實作嚴格依 milestone 順序進行，完成一個勾一個。
 
@@ -159,6 +162,76 @@ M0–M7 交付的是「能跑的服務」。這一段交付的是「能上線的
   服務層在真實請求裡佔 10~19 ms（逐筆差值中位數，約 0.4~0.7%）。
   README 已依七點清單改寫，兩軌數字標明不可混用。
 
+### 3.2 上線之後（2026-07-26 ~ 07-28）
+
+3.1 交付的是「能上線的服務」。這一段是**真的上線之後**才問得出來的東西——
+部署踩到的坑、宣稱與實測的落差、以及「加了東西但某個清單沒跟上」這個反覆出現的形狀。
+
+**這一段沒有事先規劃的 milestone。** 每一項都是做完前一項時，被實測結果逼出來的。
+
+- [x] **部署到 Hugging Face Space**（2026-07-26）
+  https://huggingface.co/spaces/steven0226/fhir-care-copilot（public、Docker SDK、free cpu-basic）。
+  `--stage-dir` 把「會上傳的那一份」實體攤出來再 `docker build`——**完整 repo 建得起來
+  不代表少了 `.git/`、`data/` 的那一份建得起來**。
+  **首次部署成功之後跑的是假 agent**：腳本先上傳（觸發 build）、後設 secret，
+  build 出來的容器必然沒有金鑰，`resolve_provider_name()` 依設計退回 mock。
+  **它不會失敗**——Space 建起來、資料進去、UI 正常、問答答得出東西，只是 agent 是假的。
+  已改成 create → secrets → upload → `restart_space()`，由 `TestPublishOrdering` 釘住。
+  **驗收**：`/api/health` 回 `provider: gemini`（不是 `mock`）；線上實問一題回傳 5 筆
+  帶 `Condition/{id}` 的 evidence；`/metrics` 上 provider 錯誤與拒答計數皆為零。
+- [x] **前端單元測試進 CI**（2026-07-26，35 個）
+  vitest + @testing-library/react。涵蓋 `api.ts` 的金鑰注入與錯誤翻譯（唯一注入點）、
+  `StatusBar` 的降級揭露、`ChatPanel` 的錯誤訊息與送出行為。
+  **誠實標明沒涵蓋**：PatientSelector / PatientTimeline / EvidenceDrawer 的渲染，
+  以及任何版面行為（自動捲動在 jsdom 裡是 stub 掉的）。
+  測試檔放 `src/` 底下，所以 `tsc -b` 會一併型別檢查它們，production bundle 不受影響。
+- [x] **兩道新的結構化拒答**（2026-07-26/27）
+  （a）`require_tool_call_before_answer`——一次工具都沒執行就作答即拒答，把
+  「LLM 不憑記憶回答病患事實」從 prompt 要求變成**結構保證**；
+  （b）`report_out_of_scope`——讓模型**用工具宣告**「這題現有工具都涵蓋不到」，
+  把「模型是不是在拒答」從文字判斷變成結構訊號。
+  **(a) 沒有解決 (b) 要解決的問題**：實測發現 out-of-scope 時模型會先呼叫工具、
+  拿到不相關資料、再用自然語言說答不出來——「零工具呼叫」這個判準根本碰不到它。
+  加 `refusal_reason` 機器可讀欄位，否則「100%」講不清楚是哪一道護欄的功勞。
+  **驗收**：每種拒答原因各一條測試；一條專門釘住「兩者 `limitations` 相同但
+  `refusal_reason` 不同」——那正是我自己造成的觀測盲區。
+- [x] **`list_allergies`：資料出口第一次真的從五個變六個**（2026-07-27）
+  理由是**產品缺口而非 eval 需要**——查得到用藥、查不到過敏的照護助理，
+  在「不能給他什麼」上是有洞的。
+  **刻意不過濾狀態**（其他資料工具都只回 active）：`inactive` 是「目前不認為有風險」、
+  `refuted` 是「查過確認沒有」，兩者都與「沒有紀錄」不同，而漏一筆與多一筆的代價不對稱。
+  **驗收**：fixture 補上真實語料涵蓋不到的組合（藥物過敏＋high＋reaction、inactive、
+  refuted、intolerance）；`test_tools_registry.py` 的數字每次變動都要在 docstring 寫下理由。
+- [x] **eval 題庫從 220 擴充到 254**（2026-07-27）
+  新增 `out_of_scope` 20 題與 `allergy` 14 題。
+  **out-of-scope 的題目本身由程式驗證**：`generate_cases` 對每題實際跑完所有資料工具、
+  逐字檢查輸出，查得到就 raise——**在花任何 API 費用之前**。這個檢查是踩了兩次坑才有的
+  （「上次住院」照護計畫答得出來、「手術或處置」Condition 的 `History of appendectomy`
+  答得出來），上線後又立刻擋掉「藥物過敏史」。
+  **`reports/` 上那些數字仍然只代表當時那 220 題**——沒有重跑就不改寫。
+- [x] **重跑取變異 + 兩個新指標的實測**（2026-07-27）
+  `scripts/run_repeat_eval.py`（原 `run_injection_repeats.py`）：結果檔記著當時的護欄狀態，
+  報表把新舊分成兩個 cohort **並列**而不是互相取代。
+  **injection 在新護欄下 4 輪全 100%，但 18/20 是 `no_tool_call` 擋的**——
+  換任何模型都一樣，所以這個指標**不再適合比較模型**。
+  **out-of-scope 觸發率**：nano 100% / gemini 98% / mini 90%（10 輪 × 20 題），
+  192/200 的拒答來自模型主動宣告。8 個失敗全落在「疫苗」一題，
+  而**逐字讀完沒有一筆編造**——這個指標量的是「有沒有走結構化管道」，不是幻覺率。
+- [x] **把「清單沒跟上」變成測試**（2026-07-28）
+  一天之內撞到四次「加了東西，某個手列的清單沒跟上」。前三次改成從單一來源推導
+  （registry / `expected_resource_types`）；第四次推導不了（README 是人寫的），
+  所以 `tests/test_docs_not_stale.py` 要求 `scripts/*.py` 與 `configs/*.yaml` 每一個
+  都出現在對應的 README 裡。**推導不了的就用測試釘住。**
+- [x] **Space 換上專屬金鑰**（2026-07-28）
+  demo 與開發共用免費層額度時，跑一次全量 eval 就會讓 demo 當天只剩拒答——實際發生過。
+  補上 `--unset-secret`（腳本原本**設定得了卻移除不了**）與
+  `--set-secret-from-env-as LOCAL:SPACE`（名字對不上時 Space 會**安靜退回 mock**）。
+  **「先確認金鑰能用」這個要求攔下一次會安靜失敗的部署**：新申請的金鑰回
+  `Your prepayment credits are depleted`，而驗證必須**單獨驗那一把**（帶著 failover
+  等於沒驗）。逐把測完發現 `backup_api_key_envs` 裡**有兩把從設定進去就是死的**。
+  **驗收**：本機 `AU7g` / Space `OmqQ` 互不相干；線上實問一題 `refused=false`、
+  5 筆 evidence、1336 ms。
+
 ## 4. 架構
 
 ```mermaid
@@ -205,7 +278,8 @@ data/raw、data/processed   # gitignored
   "evidence": [{"resource_type": "Condition", "resource_id": "…", "field": "clinicalStatus", "value": "active"}],
   "limitations": "……（資料截止、缺漏欄位等）",
   "refused": false,
-  "model": "gemini-2.5-flash-lite",
+  "refusal_reason": null,
+  "model": "gemini-3.1-flash-lite",
   "latency_ms": 1234,
   "input_tokens": 2048,
   "output_tokens": 256,
@@ -215,11 +289,29 @@ data/raw、data/processed   # gitignored
 
 拒答時 `refused: true`、`answer` 為結構化拒答理由、`evidence` 為空。
 
+`refusal_reason`（2026-07-27 新增）是**機器可讀**的拒答原因，與 `limitations`（給人看的一句話）
+分開——這是營運層 `error_code`/`detail` 的同一個模式。七種值：`input_too_long`、
+`patient_not_found`、`max_tool_rounds`、`timeout`、`provider_unavailable`、`no_tool_call`、
+`out_of_scope`。**沒有它的時候，20 題全部拒答而訊息相同，就分不出是哪一道護欄擋的**——
+「注入抵抗率 100%」那個數字因此講不清楚是模型的功勞還是護欄的。
+
 ## 6. Eval 計畫摘要
 
 - Case 生成：直接讀 FHIR bundle 結構產生題目與標準答案（deterministic、不人工標註），每題記錄期望的 tool 序列與期望欄位值
-- 題型配比（≥200 題）：藥物、疾病、最近量測、時間順序各 ~20%；不可回答 ~10%；prompt injection ~10%
-- 指標：tool-selection accuracy、field exact match、citation validity（引用的 resourceType/id 真的存在且相關）、unsupported-claim rate、refusal accuracy、p50/p95 latency、平均成本
+- 題型（**目前 254 題**，原規劃 220）：藥物 / 疾病 / 最近量測 / 照護計畫各 45、過敏 14、
+  不可回答 20、prompt injection 20、**超出範圍 20**
+  - `unanswerable`（病患不存在）與 `out_of_scope`（病患在、但工具查不到）**刻意分成兩類**：
+    前者的拒答是確定性的（工具回 `ok=False`），量的是護欄接沒接好；後者取決於模型會不會
+    呼叫 `report_out_of_scope`，量的是模型行為。混在一起平均會讓確定性那組稀釋掉模型那組
+  - **out-of-scope 的題目由程式驗證**：`generate_cases` 對每題實際跑完所有資料工具、逐字檢查，
+    查得到就 raise。憑推理挑題已經錯過兩次（照護計畫答得出「上次住院」、Condition 的
+    `History of appendectomy` 答得出「手術或處置」）
+- 指標：tool-selection accuracy、field exact match、citation validity（引用的 resourceType/id
+  真的存在且相關）、unsupported-claim rate、refusal accuracy、**out-of-scope refusal rate**、
+  injection resistance、p50/p95 latency、平均成本
+  - 指標適用與否**由 case 是否有 `expected_resource_types` 決定，不是題型名稱的白名單**——
+    白名單的寫法讓新題型「跑得動但沒量到」，而那不會失敗
+  - **`reports/` 上的三模型全量數字是當時那 220 題量的**，題庫擴充後沒有重跑就不改寫
 - 成本粗估（200 題 × ~2K in / 0.3K out per 題）：Gemini ≈ $0.06、gpt-5.4-mini ≈ $0.57 → 雙模型全量遠低於 $5 上限；預算守門仍必做（跑前估算、途中累計、超過即停）
 
 ## 7. 已查證外部事實（2026-07-19）
