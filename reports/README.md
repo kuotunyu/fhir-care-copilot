@@ -43,4 +43,5 @@
   才看得到,這份 JSON **不跑任何東西也看得到**。span 屬性經過 PII 遮蔽,
   不含病患姓名、問題內容或完整 `patient_id`(`tests/test_pii_redaction.py` 會實際 grep 驗證)
 
-跑法見各 script 的 docstring,或 `.claude/skills/run-eval/SKILL.md`。
+跑法見各 script 的 docstring,或 [`docs/EVAL.md`](../docs/EVAL.md)
+(題目怎麼產生、六項指標怎麼算、哪些判準不可靠)。

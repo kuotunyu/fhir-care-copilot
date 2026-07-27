@@ -102,8 +102,8 @@ def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
         "因為這段文字是每次重新產生報告時自動印出來的,它不知道有沒有人真的看過。",
         "- 這是**小樣本**比較(見上方「完成題數」);要看 220 題全量的結果,"
         "用 `--full-eval` 重新跑(注意 Gemini 免費層有 15 requests/min 的速率限制,"
-        "需要搭配 `--pace-seconds` 調整,見 `.claude/skills/run-eval/SKILL.md`)。",
-        "- 已知限制與指標定義的完整說明見 `.claude/skills/run-eval/SKILL.md`,不在這裡重複。",
+        "需要搭配 `--pace-seconds` 調整,見 `docs/EVAL.md`)。",
+        "- 已知限制與指標定義的完整說明見 `docs/EVAL.md`,不在這裡重複。",
         "",
         "## 手動核閱:Prompt Injection 逐字稿",
         "",

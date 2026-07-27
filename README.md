@@ -18,7 +18,8 @@ FHIR `resourceType/id` 證據；資料不足時明確拒答。
 > ——`provider` 欄位是 `gemini` 才是真的在跑模型，`mock` 代表退回 demo mode。
 
 **專案狀態**：M0–M7 完成，並補上營運層（認證/限流/預算、可觀測性、韌性、可信任的稽核軌跡）。
-完整 milestones 見 [PLAN.md](PLAN.md)、開發過程與真實測試輸出見 [docs/PROGRESS.md](docs/PROGRESS.md)。
+開發過程、每一步的真實測試輸出與踩過的坑見 [docs/PROGRESS.md](docs/PROGRESS.md)，
+重大決策見 [docs/decisions/](docs/decisions/)。
 
 ---
 
@@ -347,7 +348,7 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 
 ## 已知限制（模型與資料）
 
-- Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
+- Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [docs/EVAL.md](docs/EVAL.md)，不隱藏、不美化
 - 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
 - **前端單元測試只涵蓋三個地方**（35 個測試：`api.ts` 的金鑰注入與錯誤翻譯、`StatusBar` 的降級揭露、`ChatPanel` 的錯誤訊息與送出行為）。`PatientSelector` / `PatientTimeline` / `EvidenceDrawer` 的渲染沒有覆蓋，任何版面行為也沒有（自動捲動在 jsdom 裡是 stub 掉的）
 - **`report_out_of_scope` 的觸發率：三個模型 10 輪 × 20 題，`gpt-5.4-nano` 100%、`gemini-3.1-flash-lite` 98%、`gpt-5.4-mini` 90%**。全部 200 題裡 192 題（96%）的拒答來自模型**主動呼叫**該工具，`no_tool_call` 兜底一次都沒觸發——這個工具在做真正的工作。**全部 8 個失敗都落在同一題：疫苗接種紀錄**，其餘四題（保險給付、家屬聯絡方式、職業、居住地址）三個模型全數 0 失敗。逐題分佈見 [reports/out_of_scope_variance.md](reports/out_of_scope_variance.md)

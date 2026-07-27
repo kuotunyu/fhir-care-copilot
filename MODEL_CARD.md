@@ -134,5 +134,5 @@ nano 便宜 3.9 倍、速度與 mini 相當，但在**三個指標上都比 mini
   uv run python scripts/run_eval.py --provider openai --model-id gpt-5.4-nano --full-eval --out reports/eval_openai_nano_full.json
   uv run python scripts/generate_model_comparison.py reports/eval_gemini_full.json reports/eval_openai_full.json reports/eval_openai_nano_full.json --out reports/model_comparison_full.md
   ```
-  Gemini 免費層是 **500 req/day/model 且 15 req/min**（配額 per project，同專案的備援金鑰會一起用完），全量 220 題需要 440 次呼叫——`--pace-seconds 10` 是實測可行的值
-- 詳細指標定義、已知限制的完整版說明見 `.claude/skills/run-eval/SKILL.md`
+  Gemini 免費層是 **500 req/day/model 且 15 req/min**（配額 per project；不同專案的金鑰各有各的額度，但**專案一旦連上帳單帳戶就變成付費層，而付費層沒有免費額度**），全量 220 題需要 440 次呼叫——`--pace-seconds 10` 是實測可行的值
+- 詳細指標定義、題目產生方式、判準侷限的完整說明見 [docs/EVAL.md](docs/EVAL.md)
