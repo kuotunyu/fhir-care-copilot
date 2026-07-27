@@ -8,18 +8,22 @@ from fhir_copilot.tools import READ_ONLY_TOOLS, TOOLS_BY_NAME
 _WRITE_ISH_WORDS = ("write", "update", "delete", "create", "propose", "save")
 
 
-def test_registry_has_exactly_five_patient_data_tools() -> None:
-    """會去查病患資料的工具**恰好五個**。
+def test_registry_has_exactly_six_patient_data_tools() -> None:
+    """會去查病患資料的工具**恰好六個**。
 
     這個數字是安全邊界的一部分,不是統計:allowlist 就是 agent 能做的事的
     全集。多一個就是多一條資料出口,應該有人在 code review 時看到這一行變動。
 
     2026-07-26 新增 ``report_out_of_scope`` 時,這條測試從「總共五個」改成
     「查資料的五個」——**新增的那個一筆資料都不查**(見 tools/out_of_scope.py),
-    所以資料出口的數量沒有改變。改測試的理由要寫在這裡,不是默默把 5 改成 6。
+    所以資料出口的數量沒有改變。改測試的理由要寫在這裡,不是默默把數字改大。
+
+    2026-07-27 五 → 六:新增 ``list_allergies``。這次**資料出口真的多了一個**,
+    理由是產品缺口而不是 eval 需要——一個查得到用藥、查不到過敏的照護助理,
+    在「不能給他什麼」這個問題上是有洞的。決策見 docs/PROGRESS.md 當日紀錄。
     """
     data_tools = [spec for spec in READ_ONLY_TOOLS if spec.queries_patient_data]
-    assert len(data_tools) == 5
+    assert len(data_tools) == 6
     assert set(TOOLS_BY_NAME) == {spec.name for spec in READ_ONLY_TOOLS}
 
 

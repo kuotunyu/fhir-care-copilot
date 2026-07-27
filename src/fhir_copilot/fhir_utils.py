@@ -3,8 +3,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from fhir_copilot.store.base import JsonDict
+if TYPE_CHECKING:
+    # **只在型別檢查時 import,執行時不 import。**
+    #
+    # `fhir_copilot.store.base` 這一行會先跑 `store/__init__.py`,而它 import
+    # `store.local`,`store.local` 又 import 回這裡——一個真正的循環。它一直沒炸
+    # 只是因為進入點剛好都是先碰到 `tools.base`;2026-07-27 加一個字母序排在
+    # 前面的工具模組(allergies)就把進入點換掉,ImportError 立刻出現。
+    #
+    # JsonDict 只是型別別名、只出現在標註裡,而這個檔案有 `from __future__
+    # import annotations`,所以標註是字串、執行期不需要這個名字。
+    from fhir_copilot.store.base import JsonDict
 
 # 缺值/無法解析時的排序墊底值(必須是 timezone-aware,才能跟真實 FHIR dateTime 比較)
 _MISSING_DATETIME_SORT_KEY = datetime.min.replace(tzinfo=UTC)

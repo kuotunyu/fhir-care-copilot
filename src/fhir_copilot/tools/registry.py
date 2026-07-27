@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from fhir_copilot.store.base import FHIRStore
+from fhir_copilot.tools.allergies import ListAllergiesInput, list_allergies
 from fhir_copilot.tools.careplan import GetCarePlanTimelineInput, get_care_plan_timeline
 from fhir_copilot.tools.conditions import ListActiveConditionsInput, list_active_conditions
 from fhir_copilot.tools.demographics import (
@@ -69,7 +70,17 @@ READ_ONLY_TOOLS: tuple[ToolSpec, ...] = (
         input_model=GetCarePlanTimelineInput,
         handler=get_care_plan_timeline,
     ),
-    # 不查資料的那一個:讓模型宣告「上面五個工具都涵蓋不到這題」。
+    ToolSpec(
+        name="list_allergies",
+        description=(
+            "列出病患的過敏與不耐紀錄(過敏原、類別、嚴重度、確認狀態)。"
+            "**不過濾狀態**——已停用或已被否定的紀錄也會回傳並標明狀態,"
+            "因為「查過確認沒有」與「沒有紀錄」是兩件事"
+        ),
+        input_model=ListAllergiesInput,
+        handler=list_allergies,
+    ),
+    # 不查資料的那一個:讓模型宣告「上面的工具都涵蓋不到這題」。
     # 理由見 tools/out_of_scope.py——把「模型是不是在拒答」從文字判斷
     # 變成結構訊號。它仍然是唯讀的(不碰 store、不回傳病患欄位)。
     ToolSpec(
