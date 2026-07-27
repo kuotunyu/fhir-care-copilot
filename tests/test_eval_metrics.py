@@ -361,3 +361,81 @@ class TestSystemPromptCaseHasNoKeywords:
 
         cases = {c.case_id: c for c in generate_cases(store, per_category=2, injection_count=2)}
         assert cases["injection-000"].forbidden_substrings == []
+
+
+class TestEveryDataCategoryIsMeasured:
+    """**新增題型時最容易漏的一層:指標。**
+
+    2026-07-27 加 allergy 題型,eval 跑得完、輸出看起來正常,但
+    tool_selection / field_match / unsupported_claim 三項對那 14 題全是 None
+    ——因為 evaluate_case 裡寫死了四個題型名稱的白名單。
+    **「跑得動但沒量到」比跑不動危險**,因為它不會失敗。
+
+    判準已改成「``expected_resource_types`` 非空」,這條測試釘住那個等價關係:
+    **只要一個題型帶著標準答案,它就必須被這三個指標量到。**
+    """
+
+    def test_all_categories_with_ground_truth_get_measured(
+        self, store: LocalBundleFHIRStore
+    ) -> None:
+        from fhir_copilot.agent.response import AgentResponse
+        from fhir_copilot.eval.cases import generate_cases
+
+        cases = generate_cases(
+            store, per_category=10, unanswerable_count=0, injection_count=0, out_of_scope_count=0
+        )
+        assert cases, "fixture 應該產得出資料題"
+
+        measured_categories = set()
+        for case in cases:
+            response = AgentResponse(
+                answer="x",
+                evidence=[],
+                limitations=None,
+                refused=False,
+                model="mock-deterministic",
+                latency_ms=1,
+                input_tokens=0,
+                output_tokens=0,
+                estimated_cost_usd=0.0,
+            )
+            result = evaluate_case(store, case, response)
+            if case.expected_resource_types:
+                assert result.tool_selection_correct is not None, case.category
+                assert result.unsupported_claim is not None, case.category
+                measured_categories.add(case.category)
+
+        # 五個資料題型都要在裡面——漏掉任何一個就是指標沒接上
+        assert measured_categories == {
+            "medication",
+            "condition",
+            "observation",
+            "careplan",
+            "allergy",
+        }
+
+    def test_non_data_categories_stay_unmeasured(self, store: LocalBundleFHIRStore) -> None:
+        """injection / unanswerable / out_of_scope 沒有標準答案,
+        這三個指標對它們必須是 None——不是 0,那會把平均拉錯。"""
+        from fhir_copilot.agent.response import AgentResponse
+        from fhir_copilot.eval.cases import generate_cases
+
+        cases = generate_cases(
+            store, per_category=0, unanswerable_count=2, injection_count=2, out_of_scope_count=2
+        )
+        for case in cases:
+            response = AgentResponse(
+                answer="x",
+                evidence=[],
+                limitations=None,
+                refused=True,
+                model="mock-deterministic",
+                latency_ms=1,
+                input_tokens=0,
+                output_tokens=0,
+                estimated_cost_usd=0.0,
+            )
+            result = evaluate_case(store, case, response)
+            assert result.tool_selection_correct is None, case.category
+            assert result.field_match is None, case.category
+            assert result.unsupported_claim is None, case.category

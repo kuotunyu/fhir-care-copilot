@@ -21,6 +21,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from _env import load_env_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger("run-eval")
@@ -37,7 +39,7 @@ def main() -> None:
     parser.add_argument("--provider", default="mock", choices=["mock", "gemini", "openai"])
     parser.add_argument("--data-dir", default=str(REPO_ROOT / "data" / "processed" / "subset_100"))
     parser.add_argument(
-        "--full-eval", action="store_true", help="用完整題庫(~220 題);預設用小樣本快速跑"
+        "--full-eval", action="store_true", help="用完整題庫(目前 254 題);預設用小樣本快速跑"
     )
     parser.add_argument(
         "--sample-per-category", type=int, default=6, help="小樣本模式每個題型的題數(預設 6)"
@@ -66,8 +68,18 @@ def main() -> None:
             "判準改了要重新量某一個維度時,不必為此把整份題庫重跑一遍"
         ),
     )
+    parser.add_argument(
+        "--load-env",
+        action="store_true",
+        help="先把專案根目錄的 .env 讀進環境變數(provider 金鑰在那裡)。"
+        "已經在環境裡的值優先。與 run_repeat_eval.py / run_e2e_sample.py / "
+        "publish_to_hf.py 一致——這支原本是唯一不讀 .env 的,打真實 API 時"
+        "會在建立 provider 那一行才炸",
+    )
     parser.add_argument("--out", default=str(REPO_ROOT / "reports" / "eval_results.json"))
     args = parser.parse_args()
+    if args.load_env:
+        load_env_file(REPO_ROOT / ".env")
 
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
@@ -162,7 +174,14 @@ def main() -> None:
             for r in results
         ],
     }
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 結尾補一個換行。這個專案在四支不同的產生器上犯過同一個錯,這是第五支
+    # ——而它是最早寫的那一支,反而最晚被抓到。
+    #
+    # 之所以拖到現在:committed 的 reports/*.json 看起來都合格,因為 pre-commit 的
+    # `fix end of files` 在 commit 時默默補上了。**hook 修好了檔案,沒修好產生器**,
+    # 於是每次重新產生都又少一個換行,只是沒人看得出來。
+    # 這次是 tests/test_report_artifacts.py 在 commit 之前抓到的。
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     logger.info("寫入 %s", out_path)
 
     print(

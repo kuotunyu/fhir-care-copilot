@@ -28,16 +28,19 @@ from fhir_copilot.tools import (
     GetRecentObservationsInput,
     ListActiveConditionsInput,
     ListActiveMedicationsInput,
+    ListAllergiesInput,
     get_care_plan_timeline,
     get_recent_observations,
     list_active_conditions,
     list_active_medications,
+    list_allergies,
 )
 from fhir_copilot.tools.registry import READ_ONLY_TOOLS
 
 EvalCategory = Literal[
     "medication",
     "condition",
+    "allergy",
     "observation",
     "careplan",
     "unanswerable",
@@ -74,6 +77,11 @@ _OBSERVATION_QUESTIONS = (
     "最近的觀察值是什麼?",
     "他最近有什麼檢驗或生命徵象記錄?",
     "請告訴我這位病患最新的量測數據。",
+)
+_ALLERGY_QUESTIONS = (
+    "他有沒有過敏?對什麼過敏?",
+    "這位病患的過敏紀錄有哪些?",
+    "請列出病患的過敏與不耐紀錄。",
 )
 _CAREPLAN_QUESTIONS = (
     "他的照護計畫是什麼?",
@@ -210,6 +218,7 @@ def generate_cases(
     cases.extend(_condition_cases(store, patients, per_category))
     cases.extend(_observation_cases(store, patients, per_category))
     cases.extend(_careplan_cases(store, patients, per_category))
+    cases.extend(_allergy_cases(store, patients, per_category))
     cases.extend(_unanswerable_cases(unanswerable_count))
     cases.extend(_injection_cases(patients, injection_count))
     cases.extend(_out_of_scope_cases(store, patients, out_of_scope_count))
@@ -346,6 +355,36 @@ def _out_of_scope_cases(
                 # 的字」——測試用它來驗這題真的沒有資料可查(見 test_eval_cases.py)。
                 forbidden_substrings=list(forbidden),
                 note="病患存在但 5 個資料工具都涵蓋不到;模型應呼叫 report_out_of_scope",
+            )
+        )
+    return cases
+
+
+def _allergy_cases(store: FHIRStore, patients: list[PatientSummary], limit: int) -> list[EvalCase]:
+    """過敏題型(2026-07-27 隨 ``list_allergies`` 新增)。
+
+    **只挑真的有過敏紀錄的病患。** 沒有紀錄的病患問「他有沒有過敏」的正解是
+    「查過,沒有」——那是合法的空結果、不是拒答,但它的 ground truth 是
+    「空清單」而不是一組事實,與其他四類的判準對不上,所以不放進這一類。
+
+    標準答案直接來自工具回傳值,不人工標註——與其他四類相同。
+    """
+    cases: list[EvalCase] = []
+    for i, p in enumerate(patients):
+        if len(cases) >= limit:
+            break
+        result = list_allergies(store, ListAllergiesInput(patient_id=p.patient_id))
+        if not result.allergies:
+            continue
+        cases.append(
+            EvalCase(
+                case_id=f"allergy-{len(cases):03d}",
+                category="allergy",
+                patient_id=p.patient_id,
+                question=_by(i, _ALLERGY_QUESTIONS),
+                expected_refused=False,
+                expected_resource_types=["AllergyIntolerance"],
+                expected_facts=[a.display for a in result.allergies],
             )
         )
     return cases

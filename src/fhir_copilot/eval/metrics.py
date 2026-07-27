@@ -221,7 +221,17 @@ def evaluate_case(store: FHIRStore, case: EvalCase, response: AgentResponse) -> 
     field_match: bool | None = None
     unsupported_claim: bool | None = None
 
-    if case.category in ("medication", "condition", "observation", "careplan"):
+    # **判準是「這題有沒有標準答案」,不是題型名稱的白名單。**
+    #
+    # 原本這裡寫死 ("medication", "condition", "observation", "careplan")。
+    # 2026-07-27 新增 allergy 題型時忘了同步,結果 eval 跑得完、指標卻全是 None
+    # ——tool-selection、field match、unsupported-claim 三項對那 14 題都沒量到,
+    # 而輸出看起來一切正常。**「跑得動但沒量到」比跑不動危險。**
+    #
+    # ``expected_resource_types`` 非空,意思就是「這題應該從某個 resource 查出
+    # 答案來」——那正是這三個指標適用的條件。injection / unanswerable /
+    # out_of_scope 的這個欄位都是空的,自動被排除,行為與原本逐字相同。
+    if case.expected_resource_types:
         actual_types = {e.resource_type for e in response.evidence}
         tool_selection_correct = set(case.expected_resource_types).issubset(actual_types)
         field_match = (

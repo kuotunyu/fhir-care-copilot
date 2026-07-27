@@ -39,8 +39,44 @@ def test_patient_without_careplan_is_excluded_from_careplan_cases(
 
 def test_per_category_limit_is_respected(store: LocalBundleFHIRStore) -> None:
     cases = generate_cases(store, per_category=1, unanswerable_count=0, injection_count=0)
-    for category in ("medication", "condition", "observation", "careplan"):
+    for category in ("medication", "condition", "observation", "careplan", "allergy"):
         assert len([c for c in cases if c.category == category]) <= 1
+
+
+def test_allergy_cases_come_from_the_tool_not_from_me(store: LocalBundleFHIRStore) -> None:
+    """過敏題的標準答案直接來自 list_allergies 的回傳值,不人工標註
+    ——與其他四個資料題型相同。
+
+    2026-07-27 加 list_allergies 工具時一併補的:加了工具卻沒有對應的
+    ground-truth 題目,等於這條路徑在 eval 裡是盲的。那與「加了護欄但沒量
+    觸發率」是同一種缺口。
+    """
+    from fhir_copilot.tools import ListAllergiesInput, list_allergies
+
+    cases = generate_cases(
+        store, per_category=10, unanswerable_count=0, injection_count=0, out_of_scope_count=0
+    )
+    allergy_cases = [c for c in cases if c.category == "allergy"]
+
+    assert allergy_cases, "Amy 的 fixture 有過敏紀錄,應該產生題目"
+    for case in allergy_cases:
+        assert case.expected_resource_types == ["AllergyIntolerance"]
+        assert case.expected_refused is False
+        truth = list_allergies(store, ListAllergiesInput(patient_id=case.patient_id))
+        assert case.expected_facts == [a.display for a in truth.allergies]
+
+
+def test_patient_without_allergies_is_excluded(store: LocalBundleFHIRStore) -> None:
+    """Ben 沒有過敏紀錄——不該產生題目。
+
+    「查過,沒有」是合法的空結果、不是拒答,但它的 ground truth 是「空清單」
+    而不是一組事實,判準與其他四類對不上,所以不放進這一類。
+    """
+    cases = generate_cases(
+        store, per_category=10, unanswerable_count=0, injection_count=0, out_of_scope_count=0
+    )
+
+    assert [c for c in cases if c.category == "allergy" and c.patient_id == BEN_ID] == []
 
 
 def test_unanswerable_cases_use_nonexistent_patient_ids(store: LocalBundleFHIRStore) -> None:
