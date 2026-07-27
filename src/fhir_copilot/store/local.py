@@ -1,6 +1,6 @@
 """LocalBundleFHIRStore — 讀取本地 Synthea FHIR R4 JSON bundles。
 
-Synthea 輸出結構(已查證,PLAN.md §7,2026-07-24 用真實 100 位病患資料校正過):
+Synthea 輸出結構(已查證,2026-07-24 用真實 100 位病患資料校正過):
 - 每位病患一個 JSON = 一個 transaction Bundle,第一個 entry 是 Patient
 - bundle 內互相參照用 ``urn:uuid:<id>`` fullUrl
 - 實測下載的 1K sep2019 樣本中,Practitioner/Organization 都內嵌在病患 bundle

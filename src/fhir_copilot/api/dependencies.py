@@ -1,11 +1,11 @@
 """FastAPI 共用依賴:FHIRStore/provider/configs 的單例載入,以及營運層守門。
 
-Provider 選擇邏輯(PLAN.md §7 HF Docker Space 設計):優先用
+Provider 選擇邏輯(HF Docker Space 設計):優先用
 ``FHIR_COPILOT_PROVIDER`` 環境變數;沒設就用 configs/models.yaml 的
 ``default_provider``;若選到的 provider 需要金鑰但環境變數沒設,自動退回
 mock(demo mode)——不會因為忘記設金鑰就讓服務整個炸掉。
 
-營運層守門(PLAN.md §3.1 Phase 1)以 ``Depends`` 實作而非 middleware,理由:
+營運層守門以 ``Depends`` 實作而非 middleware,理由:
 只掛在會花錢/會寫入的端點上,``/api/health`` 就天然免疫——健康檢查不該因為
 加了認證而壞掉,也不必去跟 ``StaticFiles`` 的 mount 順序打架。
 """

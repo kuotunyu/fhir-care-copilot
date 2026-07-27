@@ -1,4 +1,4 @@
-"""FastAPI 路由(PLAN.md M4)。"""
+"""FastAPI 路由。"""
 
 from __future__ import annotations
 

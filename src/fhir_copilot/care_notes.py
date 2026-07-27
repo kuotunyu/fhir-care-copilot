@@ -1,4 +1,4 @@
-"""照護記錄草稿與確認寫入(PLAN.md M3)。
+"""照護記錄草稿與確認寫入。
 
 安全邊界(ADR 0001):``propose_care_note`` 只組出草稿,不寫任何東西,也刻意
 **不在**唯讀 agent loop 的工具 allowlist 裡(``tools/registry.py``

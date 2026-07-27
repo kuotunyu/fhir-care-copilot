@@ -1,4 +1,4 @@
-"""configs/ 底下 YAML 設定的載入與型別(PLAN.md §8:模型 id/單價/護欄不寫死在程式)。"""
+"""configs/ 底下 YAML 設定的載入與型別(模型 id/單價/護欄不寫死在程式)。"""
 
 from __future__ import annotations
 

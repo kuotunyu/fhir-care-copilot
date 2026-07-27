@@ -1,6 +1,6 @@
 # app/ — 照護工作台前端
 
-React + Vite + TypeScript（PLAN.md M4）：病患選擇器、病歷時間軸（診斷/用藥/觀察值/照護計畫）、
+React + Vite + TypeScript：病患選擇器、病歷時間軸（診斷/用藥/觀察值/照護計畫）、
 個案問答（含證據抽屜、cost/latency badge、拒答狀態）。正體中文 UI（專有名詞保留原文）、
 鍵盤可操作（`:focus-visible` 樣式、`<details>`/表單原生語意）、手機可瀏覽（已用行動裝置尺寸實測）。
 

@@ -1,6 +1,6 @@
 """OpenAI gpt-5.4-mini adapter(Responses API,手動 function calling)。
 
-官方建議新專案用 Responses API(PLAN.md §7)。用 ``previous_response_id``
+官方建議新專案用 Responses API(已查證)。用 ``previous_response_id``
 串接多輪,不必自己重組完整 input 陣列。provider instance 無狀態,對話狀態
 透過 ``state``(``_OpenAIState``)顯式傳遞。
 

@@ -2,7 +2,7 @@
 
 預設流程(不需任何金鑰):
     uv run python scripts/download_or_generate_synthea.py
-    1. 下載官方 1K 樣本 zip 到 data/raw/(已驗證 URL,PLAN.md §7)
+    1. 下載官方 1K 樣本 zip 到 data/raw/(已驗證 URL)
     2. 解壓到 data/raw/fhir_r4_sep2019/
     3. 取前 N 位(檔名排序,deterministic)複製到 data/processed/subset_<N>/
     4. 以 LocalBundleFHIRStore 載入驗證並列出病患

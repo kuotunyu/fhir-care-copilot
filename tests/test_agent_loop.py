@@ -1,4 +1,4 @@
-"""Agent loop 整合測試:guardrails、evidence、拒答、回應契約(PLAN.md M3)。"""
+"""Agent loop 整合測試:guardrails、evidence、拒答、回應契約。"""
 
 from collections.abc import Sequence
 from typing import Any

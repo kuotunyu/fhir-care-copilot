@@ -1,4 +1,4 @@
-# Agent loop 護欄(PLAN.md §2 安全邊界 / §3 M3)。
+# Agent loop 護欄(安全邊界)。
 # 工具 allowlist 的權威來源是程式(src/fhir_copilot/tools/registry.py 的
 # READ_ONLY_TOOLS)——這裡刻意不重複列工具名稱,避免設定檔與程式碼各說各話。
 

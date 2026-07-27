@@ -1,6 +1,6 @@
 """稽核軌跡的兩個後端。
 
-**必須可選**(PLAN.md §3.1 Phase 4):沒有 ``DATABASE_URL`` 就退回檔案模式,
+**必須可選**(營運層 Phase 4):沒有 ``DATABASE_URL`` 就退回檔案模式,
 服務照樣起得來,``/api/health`` 明確回報現在用哪一種。這是這個專案能當 demo、
 能上 HF Space 的前提,與 provider 缺金鑰退回 mock 是同一個哲學。
 

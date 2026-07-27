@@ -1,6 +1,6 @@
 """list_active_medications:目前生效中(status=active)的用藥清單。
 
-Synthea 版本差異(PLAN.md §7,已在 fixture 內兩種都覆蓋):
+Synthea 版本差異(已在 fixture 內兩種都覆蓋):
 - 已結束的 status 有 ``stopped``(舊版,如 sep2019 樣本)與 ``completed``(v3.4.0+)
   兩種寫法;這裡只挑 ``status == "active"``,不受此差異影響。
 - 藥品編碼可能是 ``medicationCodeableConcept``(直接內嵌)或 ``medicationReference``

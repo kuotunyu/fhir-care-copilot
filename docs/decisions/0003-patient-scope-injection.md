@@ -2,11 +2,11 @@
 
 - **狀態**：Accepted
 - **日期**:2026-07-19
-- **相關**:PLAN.md §2(安全邊界)、ADR 0001(threat model)、M3 agent loop
+- **相關**:[ADR 0001](0001-scope.md)(threat model 與安全邊界)、M3 agent loop
 
 ## 背景
 
-工作台的使用情境是「先選病患、再對話」（PLAN.md M4「病患選擇器」）。5 個唯讀
+工作台的使用情境是「先選病患、再對話」（前端的「病患選擇器」）。5 個唯讀
 工具（M2）為了可獨立測試，input schema 都保留 `patient_id: str` 欄位。到了
 M3 串上 LLM 之後，出現一個具體問題：**工具呼叫的 `patient_id` 這個值，最終
 應該由誰決定？**

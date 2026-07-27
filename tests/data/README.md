@@ -1,7 +1,7 @@
 # tests/data/fixtures
 
 **全部是手工打造的合成測試資料**（非 Synthea 直接輸出、不含任何真實個資），
-結構依照查證過的 Synthea FHIR R4 輸出慣例（PLAN.md §7、`FhirR4.java`）：
+結構依照查證過的 Synthea FHIR R4 輸出慣例（`FhirR4.java`）：
 
 | 檔案 | 用途 |
 |---|---|

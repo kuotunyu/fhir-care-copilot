@@ -27,7 +27,7 @@ providers:
     model_id: gemini-3.1-flash-lite
     sdk: google-genai
     api_key_env: GEMINI_API_KEY
-    # 備用 key(429 quota failover,選配,見 PLAN.md §10 風險表)
+    # 備用 key(429 quota failover,選配)
     #
     # **2026-07-28 從三把縮成零把,理由是實測發現其中兩把一直是死的。**
     #

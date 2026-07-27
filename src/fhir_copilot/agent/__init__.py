@@ -1,4 +1,4 @@
-"""Agent loop 與回應契約(PLAN.md M3)。"""
+"""Agent loop 與回應契約。"""
 
 from fhir_copilot.agent.loop import SYSTEM_PROMPT, answer_question
 from fhir_copilot.agent.response import AgentResponse

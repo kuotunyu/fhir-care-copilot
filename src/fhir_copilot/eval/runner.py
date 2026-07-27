@@ -1,4 +1,4 @@
-"""跑 eval case,含預算守門(PLAN.md M5:預設 $5 上限,跑前估算、超過即停)。"""
+"""跑 eval case,含預算守門(預設 $5 上限,跑前估算、超過即停)。"""
 
 from __future__ import annotations
 

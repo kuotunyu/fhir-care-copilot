@@ -1,4 +1,4 @@
-"""Agent 回應契約(PLAN.md §5)——每次回答都固定輸出這個結構。"""
+"""Agent 回應契約——每次回答都固定輸出這個結構。"""
 
 from __future__ import annotations
 

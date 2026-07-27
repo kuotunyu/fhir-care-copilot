@@ -1,4 +1,4 @@
-# 每 1M tokens 單價(USD)。PLAN.md §7 查證日期:2026-07-19,官方定價頁面。
+# 每 1M tokens 單價(USD)。查證日期:2026-07-19,官方定價頁面。
 # 定價會漂移——上游改價時只改這裡,estimated_cost_usd 的計算程式不動。
 
 models:

@@ -1,4 +1,4 @@
-"""Eval 指標(PLAN.md M5):tool-selection accuracy、field exact match、
+"""Eval 指標:tool-selection accuracy、field exact match、
 citation validity、unsupported-claim rate、refusal accuracy、p50/p95 latency、平均成本。
 
 「citation validity」是唯一能做到不含糊的指標:直接對照真實 store 驗證每筆

@@ -2,7 +2,7 @@
 
 - 狀態：Accepted
 - 日期：2026-07-25
-- 相關：[ADR 0004](0004-ops-controls-from-domain.md)（控制項從領域推導）、PLAN.md §3.1 Phase 2
+- 相關：[ADR 0004](0004-ops-controls-from-domain.md)（控制項從領域推導）、營運層 Phase 2
 
 ## 背景
 

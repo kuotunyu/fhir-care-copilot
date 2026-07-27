@@ -1,6 +1,6 @@
 # configs/
 
-模型 id、API 單價、agent loop 護欄、營運層參數等**全部放這裡，不寫死在程式**（PLAN.md §8/§10）。
+模型 id、API 單價、agent loop 護欄、營運層參數等**全部放這裡，不寫死在程式**。
 
 - `models.yaml`（M3）— provider/模型 id 對應（mock/gemini/openai）
 - `pricing.yaml`（M3）— 各模型每 1M tokens 單價（成本估算用；價格會漂移，改這裡即可）

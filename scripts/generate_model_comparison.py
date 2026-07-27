@@ -1,5 +1,6 @@
-"""從 scripts/run_eval.py 產出的 eval 結果 JSON,自動組出 reports/model_comparison.md
-(PLAN.md M6)。直接讀真實跑出來的數字,不手 key——任何模型品質結論都要有這份報告
+"""從 scripts/run_eval.py 產出的 eval 結果 JSON,自動組出 reports/model_comparison.md。
+
+直接讀真實跑出來的數字,不手 key——任何模型品質結論都要有這份報告
 背後的真實 eval 數字支持。
 
 用法:

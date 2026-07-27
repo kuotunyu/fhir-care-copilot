@@ -2,7 +2,7 @@
 
 - 狀態：Accepted
 - 日期：2026-07-25
-- 相關：[ADR 0001](0001-scope.md)（唯一寫入路徑）、[ADR 0004](0004-ops-controls-from-domain.md)、PLAN.md §3.1 Phase 4
+- 相關：[ADR 0001](0001-scope.md)（唯一寫入路徑）、[ADR 0004](0004-ops-controls-from-domain.md)、營運層 Phase 4
 
 ## 背景
 

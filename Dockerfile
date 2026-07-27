@@ -9,7 +9,7 @@ RUN npm run build
 # ---- Stage 2:Python runtime ----
 FROM python:3.13-slim AS runtime
 
-# HF Docker Space 要求以 UID 1000 執行,且 WORKDIR 要在 COPY 前設好(PLAN.md §7 查證)
+# HF Docker Space 要求以 UID 1000 執行,且 WORKDIR 要在 COPY 前設好(已查證)
 RUN useradd -m -u 1000 user
 WORKDIR /app
 RUN chown user:user /app
@@ -55,7 +55,7 @@ RUN python scripts/download_or_generate_synthea.py --subset 100 \
 
 ENV FHIR_COPILOT_DATA_DIR=/app/data/processed/subset_100
 
-# HF Docker Space 預設對外埠是 7860(PLAN.md §7 查證)
+# HF Docker Space 預設對外埠是 7860(已查證)
 EXPOSE 7860
 
 # 同樣直接用 venv 裡的 uvicorn,不走 `uv run`:容器啟動時不該再嘗試解析依賴、

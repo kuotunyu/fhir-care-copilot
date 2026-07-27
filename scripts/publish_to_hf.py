@@ -27,7 +27,7 @@ build,驗到的是另一條路徑。
 
 在花掉 HF 的 build 之前,先在本機證明它建得起來。
 
-依 PLAN.md §7 已查證的事實:
+依已查證的事實:
     - Space README 需要 front-matter(sdk: docker、app_port);見 assemble_readme()
     - Space Secrets 在 Settings 設定,runtime 是普通 env var,buildtime 拿不到
       → 本專案的「無金鑰自動退回 mock demo mode」設計(見 api/dependencies.py)
@@ -101,7 +101,7 @@ license: apache-2.0
 
 # **這組值不是查文件抄來的,是 HF 的 400 錯誤訊息逐字告訴我們的**(2026-07-26 實測):
 #   "colorFrom" must be one of [red, yellow, green, blue, indigo, purple, pink, gray]
-# 原本寫的是 teal/orange——兩個都不在清單上。PLAN.md §7 記了「front-matter 需要
+# 原本寫的是 teal/orange——兩個都不在清單上。事前查證只記了「front-matter 需要
 # colorFrom/colorTo」,但沒記**值域**,於是這個錯一路活到真的發布那一刻。
 HF_SPACE_COLORS = frozenset({"red", "yellow", "green", "blue", "indigo", "purple", "pink", "gray"})
 _REQUIRED_FRONT_MATTER_KEYS = ("title", "sdk", "app_port", "colorFrom", "colorTo")
@@ -157,7 +157,7 @@ def assemble_space_readme(project_readme: Path) -> str:
     """把專案 README 內容接在 HF Space 要求的 front-matter 後面。
 
     Space 用的 README 需要 YAML front-matter 告訴 HF 這是 docker sdk、對外
-    埠是多少(PLAN.md §7 查證);本專案根目錄的 README.md 本身不放這段
+    埠是多少(已查證);本專案根目錄的 README.md 本身不放這段
     front-matter(那是給 GitHub 讀者看的,front-matter 只對 HF 有意義),
     發布時才組合起來,避免兩份 README 分岔維護。
     """

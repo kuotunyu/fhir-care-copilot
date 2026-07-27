@@ -1,4 +1,4 @@
-"""HAPI FHIR server adapter — 預留介面,尚未實作(PLAN.md M1:只留 interface)。
+"""HAPI FHIR server adapter — 預留介面,尚未實作(只留 interface)。
 
 之後接真正的 FHIR server 時,實作與 LocalBundleFHIRStore 相同的 FHIRStore
 protocol(唯讀;write 方法依 ADR 0001 永不提供)。

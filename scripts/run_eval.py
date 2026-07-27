@@ -1,4 +1,4 @@
-"""Eval CLI(PLAN.md M5/M6):自動產生題目、跑 agent loop、算指標、預算守門。
+"""Eval CLI:自動產生題目、跑 agent loop、算指標、預算守門。
 
 小樣本(預設,每類別 6 題,約 30 題):
     uv run python scripts/run_eval.py --provider mock

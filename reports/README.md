@@ -1,7 +1,7 @@
 # reports/
 
 `scripts/run_eval.py`、`scripts/run_loadtest.py` 與 `scripts/run_fault_injection.py`
-的輸出(PLAN.md M5/M6 與營運層 Phase 0/2/5)。**這些檔案會進 git**——是可展示的成果,
+的輸出(eval 與營運層 Phase 0/2/5)。**這些檔案會進 git**——是可展示的成果,
 不是暫存資料。
 
 - `eval_results.json` — mock provider 跑完整 220 題的結果(每題判準 + 彙總指標)

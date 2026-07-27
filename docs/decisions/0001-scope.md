@@ -2,7 +2,7 @@
 
 - **狀態**：Accepted
 - **日期**:2026-07-19
-- **相關**:PLAN.md §2(安全邊界)、§8(決策表)
+- **相關**:[ADR 0003](0003-patient-scope-injection.md)(病患範圍與 injection 邊界)、[ADR 0004](0004-ops-controls-from-domain.md)(營運層控制項)
 
 ## 背景
 

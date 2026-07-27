@@ -1,6 +1,6 @@
 """Gemini adapter(google-genai SDK,手動 function calling)。
 
-模型 id 由 configs/models.yaml 決定,不寫死在這裡(PLAN.md §8)。這個決定被
+模型 id 由 configs/models.yaml 決定,不寫死在這裡。這個決定被
 現實驗證過兩次:2026-07-19 查證時預設是 gemini-2.5-flash-lite,7/24 實測發現
 它對這把金鑰「已對新使用者下架」(404),改用 gemini-3.1-flash-lite;7/26 換到
 gemini-3.5-flash-lite 並重跑 eval,再依 20 題 injection A/B 的結果**退回 3.1**
@@ -14,7 +14,7 @@ supported``。正確角色是 ``user``——工具結果在 Gemini 的模型裡�
 回歸測試在 ``tests/test_providers_gemini.py``(用假 client,不打 API)。
 
 刻意選用 ``client.models.generate_content`` 這條 surface,不是新版 Interactions
-API(PLAN.md §7 記錄的決策——文件穩定、範例齊全)。關閉 automatic function
+API(決策理由:文件穩定、範例齊全)。關閉 automatic function
 calling,agent loop 自己驅動多輪迴圈(ADR 0001/0003)。provider instance 本身
 無狀態,對話歷史透過 ``state``(``_GeminiState``)顯式傳遞,可安全被多個
 問題重複使用。

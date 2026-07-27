@@ -1,4 +1,4 @@
-"""propose_care_note / confirm_and_log 單元測試(PLAN.md M3)。"""
+"""propose_care_note / confirm_and_log 單元測試。"""
 
 import json
 from pathlib import Path

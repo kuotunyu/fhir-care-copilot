@@ -1,4 +1,4 @@
-"""LLM provider adapters(mock/gemini/openai)與統一介面(PLAN.md M3)。"""
+"""LLM provider adapters(mock/gemini/openai)與統一介面。"""
 
 from fhir_copilot.providers.base import Provider, ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.providers.factory import make_provider

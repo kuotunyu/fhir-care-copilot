@@ -130,7 +130,7 @@ class TestResolveReference:
 
     def test_urn_uuid_practitioner_reference_resolves(self, store: LocalBundleFHIRStore) -> None:
         """實測下載的 1K 樣本中最主要的模式:Practitioner 內嵌在 bundle 內、
-        用 urn:uuid 正常解析(PLAN.md §7,M1 審查用真實資料校正過)。"""
+        用 urn:uuid 正常解析(M1 審查用真實資料校正過)。"""
         encounter = store.get_resources(AMY_ID, "Encounter")[0]
         ref = encounter["participant"][0]["individual"]["reference"]
         assert ref.startswith("urn:uuid:")
