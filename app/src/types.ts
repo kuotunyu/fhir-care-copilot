@@ -59,11 +59,26 @@ export interface Evidence {
   value: string | null
 }
 
+/** 拒答的機器可讀原因。與後端 agent/response.py 的 RefusalReason 對應。 */
+export type RefusalReason =
+  | 'input_too_long'
+  | 'patient_not_found'
+  | 'max_tool_rounds'
+  | 'timeout'
+  | 'provider_unavailable'
+  | 'no_tool_call'
+  | 'out_of_scope'
+
 export interface AgentResponse {
   answer: string
   evidence: Evidence[]
   limitations: string | null
   refused: boolean
+  /**
+   * 沒拒答時是 null。`limitations` 給人看,這個給程式看——兩者刻意分開,
+   * 與營運層的 `detail`/`error_code` 是同一個模式。
+   */
+  refusal_reason: RefusalReason | null
   model: string
   latency_ms: number
   input_tokens: number

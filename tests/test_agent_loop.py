@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from fhir_copilot.agent.loop import _dedupe_evidence, answer_question
+from fhir_copilot.agent.response import RefusalReason
 from fhir_copilot.config import Guardrails, load_pricing
 from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.providers.mock import MockProvider
@@ -227,6 +228,114 @@ class TestReportOutOfScope:
                 assert spec.description in sentence
             else:
                 assert spec.description not in sentence
+
+
+class TestRefusalReason:
+    """每一種拒答都要帶得出**機器可讀**的原因。
+
+    2026-07-27 重跑 injection eval 時,20 題全部拒答、``limitations`` 全是同一句話
+    ——於是分不出是模型主動宣告查不到,還是它根本沒呼叫工具被攔下來。那是兩件
+    很不一樣的事,而「100% 抵抗率」沒有這個區分就是個講不清楚的數字。
+
+    ``limitations`` 給人看,``refusal_reason`` 給程式看,與營運層的
+    ``detail``/``error_code`` 是同一個模式。
+    """
+
+    def test_input_too_long(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=MockProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他" * (guardrails.max_input_chars + 1),
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refusal_reason == RefusalReason.INPUT_TOO_LONG
+
+    def test_patient_not_found(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=MockProvider(),
+            store=store,
+            patient_id="nonexistent-patient",
+            question="他目前有在吃什麼藥?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refusal_reason == RefusalReason.PATIENT_NOT_FOUND
+
+    def test_max_tool_rounds(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_LoopingProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他目前有在吃什麼藥?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refusal_reason == RefusalReason.MAX_TOOL_ROUNDS
+
+    def test_no_tool_call(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_NoToolProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他上次住院是什麼時候?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refusal_reason == RefusalReason.NO_TOOL_CALL
+
+    def test_out_of_scope(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=_OutOfScopeProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他的保險給付範圍包含哪些項目?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refusal_reason == RefusalReason.OUT_OF_SCOPE
+
+    def test_the_two_new_guardrails_are_distinguishable(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        """**這條就是那個觀測盲區。** 兩者的 limitations 對使用者刻意一致,
+        但 refusal_reason 必須分得出來,否則量測時講不出 100% 是怎麼來的。"""
+        kwargs: dict[str, Any] = {
+            "store": store,
+            "patient_id": AMY_ID,
+            "guardrails": guardrails,
+            "pricing": pricing,
+        }
+        no_tool = answer_question(provider=_NoToolProvider(), question="X?", **kwargs)
+        declared = answer_question(provider=_OutOfScopeProvider(), question="Y?", **kwargs)
+
+        assert no_tool.limitations == declared.limitations  # 給人看的一樣
+        assert no_tool.refusal_reason != declared.refusal_reason  # 給程式看的不一樣
+
+    def test_successful_answer_has_no_reason(
+        self, store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+    ) -> None:
+        result = answer_question(
+            provider=MockProvider(),
+            store=store,
+            patient_id=AMY_ID,
+            question="他目前有在吃什麼藥?",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+        assert result.refused is False
+        assert result.refusal_reason is None
 
 
 class TestRequireToolCallBeforeAnswer:

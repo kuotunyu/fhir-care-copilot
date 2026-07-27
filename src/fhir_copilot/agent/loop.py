@@ -30,7 +30,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from fhir_copilot.agent.response import AgentResponse
+from fhir_copilot.agent.response import AgentResponse, RefusalReason
 from fhir_copilot.config import Guardrails, ModelPricing, estimate_cost_usd
 from fhir_copilot.ops.resilience import ProviderUnavailableError
 from fhir_copilot.ops.tracing import get_tracer
@@ -85,6 +85,7 @@ def _refuse(
     *,
     model_id: str,
     limitation: str,
+    reason: RefusalReason,
     start_time: float,
     input_tokens: int = 0,
     output_tokens: int = 0,
@@ -96,6 +97,7 @@ def _refuse(
         evidence=[],
         limitations=limitation,
         refused=True,
+        refusal_reason=reason,
         model=model_id,
         latency_ms=_elapsed_ms(start_time),
         input_tokens=input_tokens,
@@ -206,6 +208,7 @@ def answer_question(
         return _refuse(
             model_id=provider.model_id,
             limitation=_REFUSAL_LIMITATION_TOO_LONG,
+            reason=RefusalReason.INPUT_TOO_LONG,
             start_time=start_time,
         )
 
@@ -221,6 +224,7 @@ def answer_question(
         return _refuse(
             model_id=provider.model_id,
             limitation=_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE,
+            reason=RefusalReason.PROVIDER_UNAVAILABLE,
             start_time=start_time,
         )
     total_input_tokens = step.input_tokens
@@ -235,6 +239,7 @@ def answer_question(
             return _refuse(
                 model_id=provider.model_id,
                 limitation=_REFUSAL_LIMITATION_MAX_ROUNDS,
+                reason=RefusalReason.MAX_TOOL_ROUNDS,
                 start_time=start_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -244,6 +249,7 @@ def answer_question(
             return _refuse(
                 model_id=provider.model_id,
                 limitation=_REFUSAL_LIMITATION_TIMEOUT,
+                reason=RefusalReason.TIMEOUT,
                 start_time=start_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -270,6 +276,7 @@ def answer_question(
             return _refuse(
                 model_id=provider.model_id,
                 limitation=_REFUSAL_LIMITATION_OUT_OF_SCOPE,
+                reason=RefusalReason.OUT_OF_SCOPE,
                 start_time=start_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -279,6 +286,7 @@ def answer_question(
             return _refuse(
                 model_id=provider.model_id,
                 limitation=_REFUSAL_LIMITATION_INSUFFICIENT,
+                reason=RefusalReason.PATIENT_NOT_FOUND,
                 start_time=start_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -293,6 +301,7 @@ def answer_question(
             return _refuse(
                 model_id=provider.model_id,
                 limitation=_REFUSAL_LIMITATION_PROVIDER_UNAVAILABLE,
+                reason=RefusalReason.PROVIDER_UNAVAILABLE,
                 start_time=start_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -318,6 +327,7 @@ def answer_question(
         return _refuse(
             model_id=provider.model_id,
             limitation=_REFUSAL_LIMITATION_NO_TOOL_CALL,
+            reason=RefusalReason.NO_TOOL_CALL,
             start_time=start_time,
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
