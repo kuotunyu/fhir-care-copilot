@@ -148,7 +148,31 @@ jobs:
       - name: Build image
         # 不 push,只驗證建得起來。build 期間會下載 Synthea 樣本資料烤進 image,
         # 所以這個 job 比其他 job 慢得多(數分鐘)。
-        run: docker build -t fhir-care-copilot:ci .
+        #
+        # 重試三次的理由:2026-07-28 這個 job 紅過一次,失敗在第一步
+        # `load metadata for docker.io/library/node:24-slim` 的 i/o timeout
+        # ——Docker Hub 對 runner 的共用 IP 有匿名拉取限制,連 COPY 都還沒發生。
+        # 前 7 次全綠,重跑一次就過,是偶發。
+        #
+        # 重試整個 build(而不是只重試 pull)的取捨:**真的壞掉時不會因此變慢**,
+        # 因為 layer cache 會讓第 2、3 次直接跑到上次失敗的那一層;而 BuildKit
+        # 解析 base image metadata 是否會退回本機 image 並不確定,所以不靠它。
+        #
+        # 代價是**重試會遮住間歇性的真實失敗**。所以每次重試都印出來:
+        # 如果 log 裡經常看到「第 N 次失敗」,那要去查根因,不是把次數調高。
+        run: |
+          for attempt in 1 2 3; do
+            if docker build -t fhir-care-copilot:ci .; then
+              echo "build 成功(第 $attempt 次嘗試)"
+              exit 0
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::docker build 連續失敗三次,不是偶發"
+              exit 1
+            fi
+            echo "::warning::docker build 第 $attempt 次失敗,$((attempt * 15)) 秒後重試"
+            sleep $((attempt * 15))
+          done
 
       - name: Smoke test the image
         # 光是 build 成功不代表跑得起來——CMD、非 root 使用者、烤進去的資料

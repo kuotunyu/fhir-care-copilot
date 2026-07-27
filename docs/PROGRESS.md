@@ -6,6 +6,66 @@
 
 ---
 
+## 2026-07-28（續五）— docker job 加重試;而重試本身是會遮住訊號的東西
+
+`9d8376f` 的 CI `docker` job 紅了一次,失敗在**第一步**:
+
+```
+#4 [internal] load metadata for docker.io/library/node:24-slim
+ERROR: failed to do request: Head ".../library/node/manifests/24-slim":
+       dial tcp 52.71.176.121:443: i/o timeout
+```
+
+`Dockerfile:2` 的 `FROM`,連 `COPY` 都還沒發生——**那次 commit 只改了三個 .md,
+一個都還沒進到 build context**。查前 8 次:7 綠 1 紅,重跑就過。
+Docker Hub 對 runner 共用 IP 的匿名拉取限制,是偶發。
+
+### 一、為什麼重試整個 build,而不是只重試 pull
+
+只重試 `docker pull` 比較精準(真的壞掉時 build 只跑一次、快速失敗),
+但它靠一個**我沒有把握的前提**:BuildKit 解析 base image metadata 失敗時,
+會不會退回本機已經 pull 下來的 image。沒把握的東西不拿來當機制。
+
+重試整個 build 的代價其實不大:**layer cache 會讓第 2、3 次直接跑到上次失敗的
+那一層**,所以「真的壞掉時會慢三倍」這個顧慮基本上不成立。
+
+### 二、真正的代價要寫下來:重試會遮住間歇性的真實失敗
+
+這是這個改動唯一值得警惕的地方。緩解方式是**讓重試在 log 裡看得見**:
+每次重試印 `::warning::`,三次都失敗印 `::error::`。
+
+註解裡明寫了一句:**如果 log 裡經常看到「第 N 次失敗」,那要去查根因,
+不是把次數調高。**
+
+### 三、驗證:三個情境都跑過,包含「它真的會重試成功」
+
+GitHub 的 `run:` 在 Linux 上是 `bash -e`,而 `set -e` 會讓
+`cmd && exit 0` 在 cmd 失敗時**直接中止整個腳本**,重試迴圈就不會發生。
+所以條件式寫成 `if docker build ...; then`(條件位置豁免於 `set -e`)。
+
+用假的 `build()` 函式模擬三種情境:
+
+```
+情境 A 第 2 次才成功  -> exit 0,log 有一行 warning   <- 這個改動存在的理由
+情境 B 第 1 次就成功  -> exit 0,沒有任何 warning
+情境 C 三次都失敗    -> exit 1,有 error annotation   <- 沒有把紅燈變綠燈
+```
+
+**只驗 C 是不夠的**——C 過了只證明「壞的還是壞的」,不證明重試有在運作。
+A 才是驗這個改動本身。
+
+### 四、沒做的部分
+
+`check` job 的 `uv sync` 與 `frontend` job 的 `npm ci` 同樣依賴外部網路,
+**同樣可能偶發**,但它們沒有紅過,所以這次不動。真的撞到再說——
+現在就包起來等於在猜哪裡會壞。
+
+### 五、下一步
+
+專案沒有待辦。
+
+---
+
 ## 2026-07-28（續四）— README 從 495 行降到 359 行;砍之前先確認要砍的是複製品
 
 README 長到 495 行、44 KB、30 個章節,讀者找不到東西。
