@@ -114,7 +114,7 @@ flowchart LR
 | `list_active_medications` | 目前生效中（`status=active`）的用藥 |
 | `get_recent_observations` | 最近的觀察值（生命徵象/檢驗結果），可依類別篩選 |
 | `get_care_plan_timeline` | 照護計畫時間軸 |
-| `list_allergies` | 過敏與不耐紀錄（過敏原、類別、嚴重度、確認狀態）。**不過濾狀態** |
+| `list_allergies` | 過敏與不耐紀錄（過敏原、類別、嚴重度、確認狀態、反應表現）。**不過濾狀態**——`inactive` 是「目前不認為有風險」、`refuted` 是「查過確認沒有」，兩者都與「沒有紀錄」不同，在「不能給他什麼」上漏一筆與多一筆的代價不對稱 |
 | `report_out_of_scope` | **不查任何資料**：讓模型明講「這題上面的工具都涵蓋不到」 |
 
 每個工具的輸入輸出皆為 Pydantic v2 嚴格 schema（`ConfigDict(strict=True, extra="forbid")`），查無資料回傳明確的 insufficient 結構，不是用空 list 混過去。

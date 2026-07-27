@@ -62,11 +62,66 @@ uv run pytest         488 passed, 9 skipped in 23.66s
 
 (+20:15 支腳本 + 4 份設定 + 1 條對照組)
 
-### 四、下一步
+### 四、藥物過敏那件事:我先前的問法就是錯的
 
-- **藥物過敏的臨床展示**——需要決定要不要換資料集,不是實作問題
+我原本說「要不要**換一份資料集**」。**那個問法沒查證,而查證之後答案完全不同。**
+
+先掃完整 1,000 位樣本(先前只掃過 100 位子集):
+
+```
+有 AllergyIntolerance 的病患: 143 / 1000
+AllergyIntolerance 總筆數: 567
+category   : {'food': 567}      ← 全部
+type       : {'allergy': 567}   ← 全部
+criticality: {'low': 567}       ← 全部
+含 reaction: 0
+category=medication: 0
+```
+
+**不是子集抽樣的問題,是整份資料的性質。** 換一個子集不會有任何幫助。
+而且那個 `category: food` 的瑕疵比先前記錄的更嚴重——**乳膠 21 筆、蜂毒 24 筆
+也被標成食物**,那兩個連「勉強算環境過敏原」都說不上。
+
+### 五、但第三條路是通的:本地生成
+
+這台機器有 Java 17.0.16,而專案本來就有 `--generate`。跑 200 位:
+
+| | sep2019(1,000 位) | 本地生成(200 位) |
+|---|---|---|
+| `category` | food **567(100%)** | environment 206 / food 55 / **medication 22** |
+| `type` | allergy 567 | allergy 279 / **intolerance 4** |
+| 含 `reaction` | **0** | **117** |
+| 反應表現 | — | Eruption of skin 58、Wheal 49、Dyspnea 31、**Anaphylaxis 24** |
+| 藥物過敏原 | — | Aspirin、Lisinopril |
+
+`category` 分類也正確了(黴菌歸 `environment`,不再全塞 `food`)。
+
+**而且 `list_allergies` 零改動就讀得出來**——這一步是實測的,不是只掃原始 JSON:
+
+```
+Aspirin       type=allergy      cat=['medication'] reactions=['Abdominal pain (finding)']
+Lisinopril    type=intolerance  cat=['medication']
+Shellfish     type=allergy      cat=['food']       reactions=['Dyspnea', 'Eruption of skin', ...]
+```
+
+掃 JSON 只證明「資料裡有」,跑工具才證明「讀得出來」。這個專案已經因為
+「只驗到等效路徑」吃過好幾次虧。
+
+### 六、預設仍然不動
+
+生成資料寫到 `data/raw/generated/`,**完全不碰 `data/processed/subset_100`**。
+預設維持下載 sep2019——`reports/` 底下每一個數字都是用那份資料量出來的,
+換掉預設等於讓 220 題 eval(三個模型)、四階段負載測試、截圖、端到端取樣全部作廢。
+本地生成是**額外的選項**,寫進 DATA_CARD,不是替代。
+
+**而且「用生成資料就能完整示範」也不成立**:283 筆全部 `criticality: low`,
+**包括那 24 筆過敏性休克**。臨床上過敏性休克絕不是低危險。所以 `criticality: high`
+的路徑仍然只有 `tests/data/fixtures/` 的手工病患走得到——那正是 fixture 該做的事。
+
+### 七、下一步
+
 - 給 Space 專屬的 Gemini 金鑰
-- Space README 已落後數個 commit
+- Space README 同步(指令已備妥)
 
 ---
 

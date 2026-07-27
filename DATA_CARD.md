@@ -32,24 +32,61 @@
 | `Observation.value[x]` 四種形式 | `valueQuantity`（多數）、`valueCodeableConcept`、多 `component[]`（如血壓）、`valueString`（social-history 類別，如居住/受虐狀況——對長照個案查詢特別重要） | 四種皆處理；漏接 `valueString` 曾導致工具靜默回傳 `None`，與「真的沒資料」無法區分，已在 M2 審查修正 |
 | 時區位移不一致 | 同一病患跨年份的 `effectiveDateTime`/`period.start` 會混用 `-04:00`/`-05:00`（日光節約時間），直接比字串排序會與實際時間相反 | 一律 parse 成 `datetime` 再比較時間先後，不比字串（`fhir_utils.datetime_sort_key`） |
 | 極少數 category code 誤植 | `Left ventricular Ejection fraction` 的 `category` 誤植為單數 `vital-sign`（標準應為複數 `vital-signs`），19,550 筆觀測值中僅 5 筆 | 上游資料的極少數不一致，記錄但不修正（非本專案資料，不擅自竄改） |
-| `AllergyIntolerance.category` 全部標成 `food` | 100 位病患共 60 筆過敏紀錄，**全部** `category: food`——包括「黴菌」「花粉」「動物皮屑」「塵蟎」，那些顯然是環境過敏原（`environment`）而非食物 | 原樣回傳並附 evidence，不擅自改寫；但**任何依 `category` 篩選的邏輯在這份資料上都不可信**，這一點寫進 `tools/allergies.py` |
+| `AllergyIntolerance.category` 全部標成 `food` | **完整 1,000 位樣本的 567 筆過敏紀錄，一筆不漏全是 `category: food`**——包括「乳膠過敏」21 筆與「蜂毒過敏」24 筆。黴菌/花粉/動物皮屑至少沾得上「環境」的邊，乳膠與蜂毒連勉強都說不上 | 原樣回傳並附 evidence，不擅自改寫；但**任何依 `category` 篩選的邏輯在這份資料上都不可信**，這一點寫進 `tools/allergies.py` |
 
-### `AllergyIntolerance` 的覆蓋缺口（2026-07-27 新增工具時實測）
+### `AllergyIntolerance` 的覆蓋缺口（2026-07-27 新增工具、2026-07-28 掃完整樣本）
 
-`list_allergies` 工具是為了補「查得到用藥、查不到過敏」這個產品缺口而加的。但**這份合成資料展示不了它最重要的用途**：
+`list_allergies` 工具是為了補「查得到用藥、查不到過敏」這個產品缺口而加的。但**這份合成資料展示不了它最重要的用途**——而且這不是子集抽樣的問題，是整份資料的性質：
 
-| 實測（100 位病患） | 數字 |
-|---|---|
-| 有過敏紀錄的病患 | 14 / 100 |
-| 過敏紀錄總數 | 60 筆 |
-| **其中藥物過敏（`category: medication`）** | **0 筆** |
-| 其中 `criticality: high` | 0 筆 |
-| 其中含 `reaction`（實際反應表現） | 0 筆 |
-| 其中 `verificationStatus: refuted` | 0 筆 |
+| | 100 位子集 | **完整 1,000 位樣本** |
+|---|---|---|
+| 有過敏紀錄的病患 | 14 | 143 |
+| 過敏紀錄總數 | 60 筆 | **567 筆** |
+| **藥物過敏（`category: medication`）** | 0 | **0** |
+| `criticality: high` 或 `unable-to-assess` | 0 | **0** |
+| 含 `reaction`（實際反應表現） | 0 | **0** |
+| `type: intolerance`（非免疫反應） | 0 | **0** |
+| `verificationStatus: refuted` | 0 | **0** |
 
-全部是 low criticality 的食物/環境過敏原（黴菌 9、樹花粉 9、動物皮屑 8、草花粉 8、塵蟎 7、帶殼海鮮 4、花生 2、乳膠 2…）。
+567 筆全部是 `food` / `allergy` / `low` 的組合。過敏原分佈：黴菌 77、動物皮屑 73、草花粉 64、樹花粉 61、塵蟎 57、帶殼海鮮 53、堅果 26、魚 25、花生 24、蜂毒 24、乳膠 21、乳製品 20、蛋 20、小麥 17、大豆 5。
 
-也就是說：**「開藥前檢查藥物過敏」這個 AllergyIntolerance 最核心的臨床用途，用這份資料一次都示範不了。** 工具本身處理得了（藥物類別、高危險度、反應表現、已被否定的紀錄），但那些路徑只有 `tests/data/fixtures/` 裡手工打造的病患走得到——fixture 刻意補上真實語料涵蓋不到的組合，見 `tests/test_tools_allergies.py`。
+也就是說：**「開藥前檢查藥物過敏」這個 `AllergyIntolerance` 最核心的臨床用途，用這份資料一次都示範不了**，換一個子集也沒用。
+
+工具本身處理得了那些情況（藥物類別、高危險度、反應表現、`intolerance`、已被否定的紀錄），但那些路徑只有 `tests/data/fixtures/` 裡手工打造的病患走得到——fixture 刻意補上真實語料涵蓋不到的組合，見 `tests/test_tools_allergies.py`。
+
+**沒有為了讓 demo 好看而補資料。** 這個專案對上游資料的立場是「記錄但不修正，不擅自竄改」（上表 `vital-sign` 單複數誤植那一列即是先例）。分得清「工具能力」與「資料涵蓋」比展示得漂亮重要。
+
+### 想看藥物過敏：用本地生成，不要動這份樣本
+
+**新版 Synthea 產得出這份 sep2019 樣本缺的東西。** 實測（`--generate --seed 20260728 --population 200`，Java 17.0.16）：
+
+| | sep2019 樣本（1,000 位） | 本地生成（200 位） |
+|---|---|---|
+| `category` | food **567（100%）** | environment 206 / food 55 / **medication 22** |
+| `type` | allergy 567 | allergy 279 / **intolerance 4** |
+| 含 `reaction` | **0** | **117** |
+| 反應表現 | — | Eruption of skin 58、Wheal 49、Dyspnea 31、**Anaphylaxis 24**… |
+| 藥物過敏原 | — | Aspirin、Lisinopril |
+
+而且 `category` 分類正確了——黴菌/花粉/皮屑歸 `environment`，不再全塞進 `food`。
+
+**`list_allergies` 零改動就讀得出來**（實測，不是只掃原始 JSON）：
+
+```
+Aspirin       type=allergy      cat=['medication'] reactions=['Abdominal pain (finding)']
+Lisinopril    type=intolerance  cat=['medication']
+Shellfish     type=allergy      cat=['food']       reactions=['Dyspnea', 'Eruption of skin', ...]
+```
+
+跑法（**不會覆蓋 `data/processed`，輸出到 `data/raw/generated/`**）：
+
+```bash
+uv run python scripts/download_or_generate_synthea.py --generate --seed 20260728 --population 200
+```
+
+**但預設仍然是下載 sep2019 樣本，不改。** `reports/` 底下每一個數字都是用那份資料量出來的——換掉預設等於讓 220 題 eval（三個模型）、四階段負載測試、截圖、端到端取樣全部作廢。本地生成是**額外的選項**，不是替代。
+
+> **生成資料還有一個瑕疵沒修**：283 筆全部 `criticality: low`，**包括那 24 筆過敏性休克（Anaphylaxis）**。臨床上過敏性休克絕不是低危險。所以「用生成資料就能完整示範」也不成立——`criticality: high` 的路徑仍然只有 `tests/data/fixtures/` 的手工病患走得到。
 
 ## 隱私與合規聲明
 
