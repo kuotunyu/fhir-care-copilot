@@ -1,5 +1,7 @@
 """generate_cases() 單元測試(fixture 資料,見 tests/data/README.md)。"""
 
+import pytest
+
 from fhir_copilot.eval.cases import generate_cases
 from fhir_copilot.store import LocalBundleFHIRStore
 from tests.conftest import AMY_ID, BEN_ID
@@ -72,23 +74,61 @@ def test_out_of_scope_cases_use_real_patients(store: LocalBundleFHIRStore) -> No
         assert c.patient_id in real_ids
 
 
-def test_out_of_scope_questions_are_not_answerable_by_any_data_tool(
+def test_out_of_scope_questions_really_have_no_answer_in_the_tools(
     store: LocalBundleFHIRStore,
 ) -> None:
-    """題目本身也要驗。
+    """**對每一題實際跑完 5 個資料工具,逐字檢查輸出裡沒有答案。**
 
-    2026-07-26 第一次探測時我挑了「他上次住院是什麼時候?」,結果模型從照護計畫
-    裡答出來了——那題根本不是 out-of-scope,是我憑感覺挑的。這條把判準釘成
-    「問的 FHIR resource type 沒有被任何工具暴露」,而不是「感覺很難」。
+    這個坑踩了兩次,兩次都是「我以為我想清楚了」:
+
+    1. 2026-07-26 挑了「他上次住院是什麼時候?」——模型從照護計畫裡答出來了。
+       我以為問題是「憑感覺挑題」,於是改用「FHIR resource type 有沒有被工具
+       暴露」當判準
+    2. 2026-07-27 實測發現模型帶著 2 筆 evidence 正確答出了闌尾切除術。
+       Synthea 的 Condition 會用 SNOMED「History of X」把手術史編進去——
+       **同一件事可以被不只一種 resource 記錄**,resource type 判準看不到這個
+
+    所以判準不再是任何推理,是真的跑一次。這條測試會在題目變爛的當下就紅,
+    不必等花錢跑完 eval 才從逐題表裡看出異狀。
     """
-    from fhir_copilot.eval.cases import _OUT_OF_SCOPE_QUESTIONS
+    from fhir_copilot.eval.cases import out_of_scope_questions_with_answers
 
-    # 5 個資料工具實際涵蓋的東西——問題不該落在這些字眼上
-    covered = ("用藥", "藥物治療", "診斷", "觀察值", "生命徵象", "檢驗", "照護計畫")
-    for question in _OUT_OF_SCOPE_QUESTIONS:
-        # 「藥物過敏」是 AllergyIntolerance,不是 MedicationRequest,不算涵蓋
-        normalised = question.replace("藥物過敏", "")
-        assert not any(word in normalised for word in covered), question
+    assert out_of_scope_questions_with_answers(store, store.list_patients()) == []
+
+
+def test_the_answerability_check_actually_catches_a_bad_question(
+    store: LocalBundleFHIRStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**驗證那個檢查會失敗。** 不然它可能只是永遠回空 list 的裝飾品。
+
+    這裡塞一題「他目前有在吃什麼藥?」——那顯然查得到,檢查必須指出來。
+    """
+    from fhir_copilot.eval import cases as cases_mod
+
+    monkeypatch.setattr(
+        cases_mod, "_OUT_OF_SCOPE_QUESTIONS", (("他目前有在吃什麼藥?", ("medicationrequest",)),)
+    )
+
+    problems = cases_mod.out_of_scope_questions_with_answers(store, store.list_patients())
+
+    assert problems, "查得到的題目沒被抓出來,這個檢查是空的"
+    assert "medicationrequest" in problems[0]
+
+
+def test_generate_cases_refuses_to_build_an_answerable_out_of_scope_set(
+    store: LocalBundleFHIRStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**在花錢之前就炸。** 2026-07-27 那次是跑完四輪、看逐題表才發現題目有問題。"""
+    from fhir_copilot.eval import cases as cases_mod
+
+    monkeypatch.setattr(
+        cases_mod, "_OUT_OF_SCOPE_QUESTIONS", (("他目前有在吃什麼藥?", ("medicationrequest",)),)
+    )
+
+    with pytest.raises(ValueError, match="其實查得到"):
+        generate_cases(
+            store, per_category=0, unanswerable_count=0, injection_count=0, out_of_scope_count=5
+        )
 
 
 def test_injection_cases_use_real_patient_and_are_judgeable(
