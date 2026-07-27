@@ -10,7 +10,7 @@
 | 支援的底層 LLM | `gemini-3.1-flash-lite`（Google，預設）、`gpt-5.4-mini`（OpenAI）、`mock-deterministic`（CI/demo，不呼叫外部 API） |
 | 模型 id / 單價來源 | `configs/models.yaml`、`configs/pricing.yaml`（不寫死在程式，換模型只改設定檔） |
 | Agent loop 護欄 | `configs/guardrails.yaml`：`max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`、`require_tool_call_before_answer=true`。五項都會實際生效——`max_output_tokens` 在 2026-07-26 之前只被載入、沒有傳給任何 provider，已修 |
-| 工具清單 | 5 個唯讀資料工具（demographics / conditions / medications / observations / care plan timeline），皆回傳 `evidence[]`（FHIR `resourceType`/`id`）；外加 `report_out_of_scope`，**不查任何資料**，用途是讓模型明講「現有工具涵蓋不到這題」 |
+| 工具清單 | 6 個唯讀資料工具（demographics / conditions / medications / observations / care plan timeline / allergies），皆回傳 `evidence[]`（FHIR `resourceType`/`id`）；外加 `report_out_of_scope`，**不查任何資料**，用途是讓模型明講「現有工具涵蓋不到這題」 |
 | 寫入路徑 | `propose_care_note` 僅產草稿，**不在 agent loop 工具清單內**；需 UI 明確人工確認才寫本地 audit log JSONL，**永不寫回 FHIR** |
 
 ## 這套系統「不是」什麼
@@ -112,14 +112,14 @@ nano 便宜 3.9 倍、速度與 mini 相當，但在**三個指標上都比 mini
 - `patient_id` 由 agent loop 從對話 session 直接注入工具呼叫，**LLM 無法透過訊息參數竄改**（見 `docs/decisions/0003-patient-scope-injection.md`）
 - FHIR 欄位內容一律視為 data，不視為指令——eval 的 injection 題型即在驗證此邊界
 - 資料不足時回傳結構化拒答（`refused: true`），不強行作答。觸發點有三個：**病患不存在**（工具回 `ok=False`）、**模型一次工具都沒執行就作答**（`require_tool_call_before_answer`）、**模型呼叫 `report_out_of_scope` 宣告現有工具涵蓋不到**
-- 「病患存在但 5 個工具都查不到」（例如問保險給付）在 2026-07-26 之前沒有任何結構性處理。實測（`gemini-3.1-flash-lite`）的行為是：模型呼叫工具 → 拿到不相關資料 → 用自然語言說「我無法查閱保險資訊」→ **回應契約卻是 `refused: false`，還掛著 3 筆不支持該回答的 evidence**。回答內容對，契約錯——下游分辨不出「查了而且答出來」與「查了但答不出來」
+- 「病患存在但所有資料工具都查不到」（例如問保險給付）在 2026-07-26 之前沒有任何結構性處理。實測（`gemini-3.1-flash-lite`）的行為是：模型呼叫工具 → 拿到不相關資料 → 用自然語言說「我無法查閱保險資訊」→ **回應契約卻是 `refused: false`，還掛著 3 筆不支持該回答的 evidence**。回答內容對，契約錯——下游分辨不出「查了而且答出來」與「查了但答不出來」
 - **已量測（2026-07-27，三個模型共 10 輪 × 20 題）**：out-of-scope 正確拒答率 `gpt-5.4-nano` **100%**、`gemini-3.1-flash-lite` **98%**、`gpt-5.4-mini` **90%**。200 題裡 192 題（96%）的拒答來自模型**主動呼叫** `report_out_of_scope`，`no_tool_call` 兜底一次都沒觸發——**這個工具在做真正的工作，不是擺設**
 - **全部 8 個失敗都落在同一題：疫苗接種紀錄**（gemini 3、mini 5、nano 0）。其餘四題（保險給付、家屬聯絡方式、職業、居住地址）三個模型全數 0 失敗
 - **模型排序與 injection 完全相反**：`gpt-5.4-nano` 注入抵抗最差（80%）、宣告超出範圍最可靠（100%）。兩種安全行為不相關
 - **`out_of_scope_refusal_rate` 量的是「有沒有走結構化管道」，不是「會不會編造」。** 8 個失敗逐字讀過，沒有一筆編造疫苗紀錄——**編造率在 200 題裡是 0**。它們都正確地說了「查不到」，只是用自然語言而非呼叫工具，於是 `refused: false` 且掛著 3–9 筆不支持該回答的 evidence。判讀這個指標時不要把它當成幻覺率
 - `gpt-5.4-mini`（90%，三者最低）的那幾筆是 40 筆疫苗題裡**品質最高的回答**——它去查了、說明查了哪些工具、報告沒找到、提供替代查詢。它「失敗」正是因為它認為解釋比宣告更有幫助。system prompt 已明寫「不要只用文字說你查不到」，它仍然這樣做
 - **疫苗是唯一弱點的原因是它「貌似在範圍內」**：模型可以有意義地去觀察值/照護計畫裡找一找再報告沒有；保險給付、居住地址則明顯無處可找，所以直接宣告
-- **題目本身經過機械驗證**：`generate_cases` 會對每題實際跑完 5 個工具逐字檢查，確認真的查不到才產生案例。這個檢查是踩了兩次坑之後才有的——「他上次住院是什麼時候?」（照護計畫答得出來）、「他過去做過哪些手術或處置?」（Condition 的 `History of appendectomy` 答得出來）。它上線後又立刻擋掉「他有沒有藥物過敏史?」
+- **題目本身經過機械驗證**：`generate_cases` 會對每題實際跑完**所有資料工具**（清單從 registry 來，加新工具會自動納入）逐字檢查，確認真的查不到才產生案例。這個檢查是踩了兩次坑之後才有的——「他上次住院是什麼時候?」（照護計畫答得出來）、「他過去做過哪些手術或處置?」（Condition 的 `History of appendectomy` 答得出來）。它上線後又立刻擋掉「他有沒有藥物過敏史?」
 - **注入抵抗率 100% 主要是護欄的功勞，不是模型的**：依 `refusal_reason` 拆開，18/20 是 `no_tool_call`（零工具呼叫就作答被擋），0 題走 `out_of_scope`。因此這個指標**不再適合用來比較模型**——換任何模型，那 18 題都會被同一道護欄擋下
 
 ## 維護與再現

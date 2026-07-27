@@ -32,6 +32,24 @@
 | `Observation.value[x]` 四種形式 | `valueQuantity`（多數）、`valueCodeableConcept`、多 `component[]`（如血壓）、`valueString`（social-history 類別，如居住/受虐狀況——對長照個案查詢特別重要） | 四種皆處理；漏接 `valueString` 曾導致工具靜默回傳 `None`，與「真的沒資料」無法區分，已在 M2 審查修正 |
 | 時區位移不一致 | 同一病患跨年份的 `effectiveDateTime`/`period.start` 會混用 `-04:00`/`-05:00`（日光節約時間），直接比字串排序會與實際時間相反 | 一律 parse 成 `datetime` 再比較時間先後，不比字串（`fhir_utils.datetime_sort_key`） |
 | 極少數 category code 誤植 | `Left ventricular Ejection fraction` 的 `category` 誤植為單數 `vital-sign`（標準應為複數 `vital-signs`），19,550 筆觀測值中僅 5 筆 | 上游資料的極少數不一致，記錄但不修正（非本專案資料，不擅自竄改） |
+| `AllergyIntolerance.category` 全部標成 `food` | 100 位病患共 60 筆過敏紀錄，**全部** `category: food`——包括「黴菌」「花粉」「動物皮屑」「塵蟎」，那些顯然是環境過敏原（`environment`）而非食物 | 原樣回傳並附 evidence，不擅自改寫；但**任何依 `category` 篩選的邏輯在這份資料上都不可信**，這一點寫進 `tools/allergies.py` |
+
+### `AllergyIntolerance` 的覆蓋缺口（2026-07-27 新增工具時實測）
+
+`list_allergies` 工具是為了補「查得到用藥、查不到過敏」這個產品缺口而加的。但**這份合成資料展示不了它最重要的用途**：
+
+| 實測（100 位病患） | 數字 |
+|---|---|
+| 有過敏紀錄的病患 | 14 / 100 |
+| 過敏紀錄總數 | 60 筆 |
+| **其中藥物過敏（`category: medication`）** | **0 筆** |
+| 其中 `criticality: high` | 0 筆 |
+| 其中含 `reaction`（實際反應表現） | 0 筆 |
+| 其中 `verificationStatus: refuted` | 0 筆 |
+
+全部是 low criticality 的食物/環境過敏原（黴菌 9、樹花粉 9、動物皮屑 8、草花粉 8、塵蟎 7、帶殼海鮮 4、花生 2、乳膠 2…）。
+
+也就是說：**「開藥前檢查藥物過敏」這個 AllergyIntolerance 最核心的臨床用途，用這份資料一次都示範不了。** 工具本身處理得了（藥物類別、高危險度、反應表現、已被否定的紀錄），但那些路徑只有 `tests/data/fixtures/` 裡手工打造的病患走得到——fixture 刻意補上真實語料涵蓋不到的組合，見 `tests/test_tools_allergies.py`。
 
 ## 隱私與合規聲明
 

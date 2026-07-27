@@ -6,6 +6,104 @@
 
 ---
 
+## 2026-07-27（續二）— 新增 `list_allergies`：資料出口從五個變六個，理由是產品缺口
+
+使用者拍板加 `AllergyIntolerance` 工具。這是**第一次真的擴大資料出口**
+——`report_out_of_scope` 不查資料,所以那次工具數變了、出口數沒變。
+
+### 一、為什麼是產品理由，不是 eval 理由
+
+前一節結尾寫著「藥物過敏要能量,得先有 AllergyIntolerance 工具」。但那是
+**倒果為因**:如果理由是「讓 eval 題目乾淨」,那就是為指標改架構。
+
+真正的理由是:**一個查得到用藥、查不到過敏的照護助理,在「不能給他什麼」
+這個問題上是有洞的。** 藥物交互作用檢查靠的就是這個 resource。
+`tests/test_tools_registry.py` 的 docstring 記著這個決策,那個數字每次變動
+都要寫下理由。
+
+### 二、這個工具刻意與其他五個不同:**不過濾狀態**
+
+`list_active_conditions` / `list_active_medications` 都只回 active,那是對的
+——已解決的診斷不是「目前的診斷」。
+
+**過敏不一樣。** `clinicalStatus: inactive` 的意思是「目前不認為有風險」,
+不是「這件事沒發生過」;`verificationStatus: refuted` 的意思是「查過、確認沒有」,
+那與「沒有紀錄」是兩件完全不同的事。
+
+在「不能給他什麼」上,**漏掉一筆與多給一筆的代價完全不對稱**。所以回傳全部,
+把 `clinical_status` 與 `verification_status` 一起交出去,讓呼叫端自己判斷。
+evidence 也刻意指向 `clinicalStatus`——那正是**沒有被過濾掉的那一欄**。
+
+### 三、這份合成資料展示不了它最重要的用途
+
+實測 subset_100:
+
+| | |
+|---|---|
+| 有過敏紀錄的病患 | 14 / 100 |
+| 紀錄總數 | 60 筆 |
+| **其中藥物過敏** | **0 筆** |
+| `criticality: high` | 0 筆 |
+| 含 `reaction` | 0 筆 |
+| `verificationStatus: refuted` | 0 筆 |
+
+全部是 low criticality 的食物/環境過敏原。而且 Synthea sep2019 把黴菌、花粉、
+動物皮屑**全標成 `category: food`**——那是資料瑕疵,已記入 DATA_CARD。
+
+**也就是說,只靠真實資料跑,「盤尼西林過敏、高危險、有呼吸困難反應」那條路徑
+一次都不會被執行到——而那正是這個工具存在的理由。**
+
+所以 fixture 補了 5 筆手工資料,刻意涵蓋真實語料缺的組合:藥物過敏+high+reaction、
+inactive、refuted、intolerance(非 allergy)、無 reaction。這是 fixture 該做的事
+——**補真實資料涵蓋不到的路徑**,不是複製它。
+
+### 四、加工具當場炸出一個潛伏已久的循環 import
+
+```
+fhir_copilot.tools.allergies → fhir_utils → store.base
+  → (觸發 store/__init__) → store.local → fhir_utils(partially initialized)
+```
+
+這個循環**一直存在**,只是靠進入點的運氣在撐:`tools/__init__.py` 的第一個
+import 一直是 `tools.base`。新工具的模組名 `allergies` 字母序排在 `base` 前面,
+ruff 把它排到第一,進入點就換了,ImportError 立刻出現。
+
+修法是斷開循環而不是排順序:`fhir_utils` 對 `JsonDict` 的 import 移進
+`TYPE_CHECKING`(它只是型別別名、只出現在標註裡,而該檔已有
+`from __future__ import annotations`)。兩個方向的進入點都實測過。
+
+### 五、我在同一個 commit 裡引入又修掉一個 bug
+
+`out_of_scope_questions_with_answers` 原本**寫死五個工具呼叫**。加了第六個工具
+之後,那個檢查就不再涵蓋全部工具——有題目經由 `list_allergies` 查得到也偵測不到,
+而且不會有任何跡象。
+
+改成從 `READ_ONLY_TOOLS` 篩 `queries_patient_data` 驅動,與 `_coverage_sentence()`
+同一個原則:**清單只該有一份**。這個專案已經因為手列與程式分岔吃過好幾次虧。
+
+### 六、測試輸出
+
+```
+uv run ruff check .        All checks passed!
+uv run mypy                Success: no issues found in 105 source files
+uv run pytest              458 passed, 9 skipped in 39.40s
+
+真實資料驗證:
+  out_of_scope 題目檢查(涵蓋 6 個工具):0 個問題
+  14/100 位病患有過敏紀錄
+  樣本 Allergy to mould | type=allergy cat=['food'] crit=low status=active/confirmed
+  evidence: AllergyIntolerance/2ad51a87 field=clinicalStatus value=active
+```
+
+### 七、下一步
+
+- **eval 尚未涵蓋這個工具**:220 題題庫沒有過敏題型。加了工具但沒有對應的
+  ground-truth 題目,等於這條路徑在 eval 裡是盲的
+- 藥物過敏的臨床用途要能展示,得換一份含 medication 類過敏的資料
+- 給 Space 專屬的 Gemini 金鑰
+
+---
+
 ## 2026-07-27（續）— 昨天推上去的 out-of-scope 數字有一半是無效的，而錯在我的題目
 
 **先講結論：`4ba67f0` 那個 commit 裡的 out-of-scope 數字（88%，手術 5/16、疫苗 4/16）

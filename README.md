@@ -80,7 +80,7 @@ flowchart LR
     P --> G[Gemini gemini-3.1-flash-lite<br/>google-genai]
     P --> O[OpenAI gpt-5.4-mini<br/>Responses API]
     P --> M[Mock Provider<br/>CI / 無金鑰 demo mode]
-    AL --> TR[Tool Registry<br/>5 個唯讀資料工具<br/>+ 1 個 out-of-scope 宣告]
+    AL --> TR[Tool Registry<br/>6 個唯讀資料工具<br/>+ 1 個 out-of-scope 宣告]
     TR --> FS[FHIRStore interface]
     FS --> LB[LocalBundleFHIRStore<br/>本地 JSON bundles]
     FS -.預留.-> HAPI[HAPI FHIR adapter]
@@ -93,7 +93,7 @@ flowchart LR
 
 | 邊界 | 實作方式 |
 |---|---|
-| **LLM 不直接碰資料庫** | LLM 只能透過 5 個 Pydantic v2 嚴格 schema 的唯讀工具取得資料，工具內部才呼叫 `FHIRStore`；LLM 永遠看不到原始 FHIR bundle |
+| **LLM 不直接碰資料庫** | LLM 只能透過 6 個 Pydantic v2 嚴格 schema 的唯讀資料工具取得資料，工具內部才呼叫 `FHIRStore`；LLM 永遠看不到原始 FHIR bundle |
 | **每個事實都要有出處** | 工具回傳值一律附 `evidence[]`（`resourceType`/`id`）；eval 的 citation validity 指標會直接對照真實 store 驗證每筆引用是否存在 |
 | **預設唯讀，寫入類工具不在 agent loop 內** | `agent/loop.py` 的工具 allowlist（`tools/registry.py` 的 `READ_ONLY_TOOLS`）裡沒有任何 write 工具；`propose_care_note` 只產草稿，**不在這份清單裡**，agent 迴圈本身呼叫不到它 |
 | **草稿 → 人工確認 → 稽核軌跡，永不寫回 FHIR** | UI 明確確認後才呼叫 `confirm_and_log`。**先驗草稿簽章再寫**，寫入 append-only 且帶 hash chain 的稽核軌跡（有 `DATABASE_URL` 走 Postgres，否則 JSONL）；沒有任何路徑會寫回 FHIR store |
@@ -105,7 +105,7 @@ flowchart LR
 
 完整 threat model 見 [docs/decisions/0001-scope.md](docs/decisions/0001-scope.md)。
 
-## 唯讀工具：5 個查資料 + 1 個宣告查不到
+## 唯讀工具：6 個查資料 + 1 個宣告查不到
 
 | 工具 | 用途 |
 |---|---|
@@ -114,11 +114,12 @@ flowchart LR
 | `list_active_medications` | 目前生效中（`status=active`）的用藥 |
 | `get_recent_observations` | 最近的觀察值（生命徵象/檢驗結果），可依類別篩選 |
 | `get_care_plan_timeline` | 照護計畫時間軸 |
-| `report_out_of_scope` | **不查任何資料**：讓模型明講「這題上面五個都涵蓋不到」 |
+| `list_allergies` | 過敏與不耐紀錄（過敏原、類別、嚴重度、確認狀態）。**不過濾狀態** |
+| `report_out_of_scope` | **不查任何資料**：讓模型明講「這題上面的工具都涵蓋不到」 |
 
 每個工具的輸入輸出皆為 Pydantic v2 嚴格 schema（`ConfigDict(strict=True, extra="forbid")`），查無資料回傳明確的 insufficient 結構，不是用空 list 混過去。
 
-**為什麼最後一個是工具而不是解析回答文字**：判斷「模型是不是在拒答」如果靠關鍵字或語意判斷，就回到這個專案一直在避免的東西——啟發式判準（eval 的 judge 在這件事上改過五次還是不穩）。給模型一個工具去宣告，把判斷問題變成結構問題。它仍然是唯讀的，而且比唯讀更嚴格：完全不碰 store、不回傳任何病患欄位、不產生 evidence。資料出口的數量沒有因為它而增加，[`tests/test_tools_registry.py`](tests/test_tools_registry.py) 有兩條測試分別釘住「查資料的工具恰好五個」與「不查資料的只准有這一個」。
+**為什麼最後一個是工具而不是解析回答文字**：判斷「模型是不是在拒答」如果靠關鍵字或語意判斷，就回到這個專案一直在避免的東西——啟發式判準（eval 的 judge 在這件事上改過五次還是不穩）。給模型一個工具去宣告，把判斷問題變成結構問題。它仍然是唯讀的，而且比唯讀更嚴格：完全不碰 store、不回傳任何病患欄位、不產生 evidence。資料出口的數量沒有因為它而增加，[`tests/test_tools_registry.py`](tests/test_tools_registry.py) 有兩條測試分別釘住「查資料的工具恰好六個」與「不查資料的只准有這一個」——那個數字每次變動都要在測試的 docstring 裡寫下理由，不是默默改大。
 
 ## Eval 結果（真實 API 呼叫，非預估值）
 
