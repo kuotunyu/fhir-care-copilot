@@ -24,6 +24,14 @@
   20 題**注入案例上的直接對照(5 種手法,搭配 4 位病患)。存在的理由:30 題小樣本裡
   injection 只有 3 題,單題翻轉就是 33 個百分點,不足以決定換不換預設模型。
   由 `scripts/generate_injection_ab.py` 產生
+- `injection_variance.md` + `injection_repeats/`（2026-07-26/27）— 同一組 20 題注入案例
+  **重跑多次**的分佈。存在的理由:單次執行的百分比不可靠——實測同一個模型對同一道題,
+  兩次執行會給出不同回答。報表依**護欄版本**分成兩組(檔案裡的 `guardrails` 欄位;
+  沒有那個欄位的就是 2026-07-26 之前跑的),新舊數字並列而不是互相取代
+- `out_of_scope_variance.md` + `out_of_scope_repeats/`（2026-07-27）— 「病患存在但
+  5 個資料工具都查不到」時的正確拒答率。這一類量的是**模型會不會呼叫
+  `report_out_of_scope`**,不是護欄接沒接好(那是確定性的,見 `unanswerable`)。
+  兩份都由 `scripts/run_repeat_eval.py` 產生
 - `traces/`（營運層 Phase 2）— 一次完整 `POST /api/chat` 的 OpenTelemetry trace。
   存在的理由是「可觀測性必須有消費端」:Jaeger 要 `docker compose --profile dev up`
   才看得到,這份 JSON **不跑任何東西也看得到**。span 屬性經過 PII 遮蔽,

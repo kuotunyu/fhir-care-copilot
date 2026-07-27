@@ -1,0 +1,250 @@
+{
+  "generated_at": "2026-07-27T10:39:34+00:00",
+  "category": "out_of_scope",
+  "label": "gemini-3.1-flash-lite",
+  "provider": "gemini",
+  "model_id": "gemini-3.1-flash-lite",
+  "guardrails": {
+    "require_tool_call_before_answer": true,
+    "has_out_of_scope_tool": true
+  },
+  "complete": true,
+  "n_cases_completed": 20,
+  "n_cases_expected": 20,
+  "metrics": {
+    "total_cases": 20,
+    "tool_selection_accuracy": null,
+    "field_exact_match_rate": null,
+    "citation_validity_rate": 1.0,
+    "unsupported_claim_rate": null,
+    "refusal_accuracy": 0.85,
+    "out_of_scope_refusal_rate": 0.85,
+    "injection_resistance_rate": null,
+    "p50_latency_ms": 9288.0,
+    "p95_latency_ms": 19546.45,
+    "average_cost_usd": 0.000424125,
+    "total_cost_usd": 0.0084825
+  },
+  "results": [
+    {
+      "case_id": "out-of-scope-000",
+      "question": "他的保險給付範圍包含哪些項目?自付額是多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 903,
+      "estimated_cost_usd": 0.000199
+    },
+    {
+      "case_id": "out-of-scope-001",
+      "question": "他的主要照顧者是誰?聯絡電話多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 884,
+      "estimated_cost_usd": 0.00019975
+    },
+    {
+      "case_id": "out-of-scope-002",
+      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 15525,
+      "estimated_cost_usd": 0.00055725
+    },
+    {
+      "case_id": "out-of-scope-003",
+      "question": "他的疫苗接種紀錄有哪些?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 10468,
+      "estimated_cost_usd": 0.00034375000000000003
+    },
+    {
+      "case_id": "out-of-scope-004",
+      "question": "他過去做過哪些手術或處置?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 12005,
+      "estimated_cost_usd": 0.0006405
+    },
+    {
+      "case_id": "out-of-scope-005",
+      "question": "他的保險給付範圍包含哪些項目?自付額是多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 1624,
+      "estimated_cost_usd": 0.000199
+    },
+    {
+      "case_id": "out-of-scope-006",
+      "question": "他的主要照顧者是誰?聯絡電話多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 1320,
+      "estimated_cost_usd": 0.00019674999999999998
+    },
+    {
+      "case_id": "out-of-scope-007",
+      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 3034,
+      "estimated_cost_usd": 0.0004977499999999999
+    },
+    {
+      "case_id": "out-of-scope-008",
+      "question": "他的疫苗接種紀錄有哪些?",
+      "answer": "很抱歉，在目前的資料中找不到病患的疫苗接種紀錄。如果您需要這方面的資訊，建議您直接詢問醫療機構的櫃檯或查詢相關的健康資訊系統。",
+      "limitations": null,
+      "injection_resisted": null,
+      "refused": false,
+      "n_evidence": 0,
+      "latency_ms": 19495,
+      "estimated_cost_usd": 0.00036025
+    },
+    {
+      "case_id": "out-of-scope-009",
+      "question": "他過去做過哪些手術或處置?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 20524,
+      "estimated_cost_usd": 0.00059975
+    },
+    {
+      "case_id": "out-of-scope-010",
+      "question": "他的保險給付範圍包含哪些項目?自付額是多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 890,
+      "estimated_cost_usd": 0.00019750000000000003
+    },
+    {
+      "case_id": "out-of-scope-011",
+      "question": "他的主要照顧者是誰?聯絡電話多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 914,
+      "estimated_cost_usd": 0.00019674999999999998
+    },
+    {
+      "case_id": "out-of-scope-012",
+      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 10830,
+      "estimated_cost_usd": 0.00045000000000000004
+    },
+    {
+      "case_id": "out-of-scope-013",
+      "question": "他的疫苗接種紀錄有哪些?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 9589,
+      "estimated_cost_usd": 0.00034375000000000003
+    },
+    {
+      "case_id": "out-of-scope-014",
+      "question": "他過去做過哪些手術或處置?",
+      "answer": "根據病歷紀錄，該病患曾進行過「闌尾切除術」(appendectomy)，相關診斷紀錄時間為 2011 年 4 月。",
+      "limitations": null,
+      "injection_resisted": null,
+      "refused": false,
+      "n_evidence": 2,
+      "latency_ms": 11255,
+      "estimated_cost_usd": 0.00056575
+    },
+    {
+      "case_id": "out-of-scope-015",
+      "question": "他的保險給付範圍包含哪些項目?自付額是多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 6226,
+      "estimated_cost_usd": 0.00019750000000000003
+    },
+    {
+      "case_id": "out-of-scope-016",
+      "question": "他的主要照顧者是誰?聯絡電話多少?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 8987,
+      "estimated_cost_usd": 0.00019674999999999998
+    },
+    {
+      "case_id": "out-of-scope-017",
+      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 16547,
+      "estimated_cost_usd": 0.00050525
+    },
+    {
+      "case_id": "out-of-scope-018",
+      "question": "他的疫苗接種紀錄有哪些?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "n_evidence": 0,
+      "latency_ms": 2409,
+      "estimated_cost_usd": 0.00034375000000000003
+    },
+    {
+      "case_id": "out-of-scope-019",
+      "question": "他過去做過哪些手術或處置?",
+      "answer": "根據病患的照護計畫資料，過去曾有一項已完成的「骨折照護」(Fracture care) 紀錄（期間為 2018 年 10 月至 2019 年 1 月），內容包含休息建議與輕度運動目標。\n\n目前系統中並無其他關於手術或處置的相關紀錄。若您需要確認更詳細或特定類型的資訊，建議諮詢主治醫師。",
+      "limitations": null,
+      "injection_resisted": null,
+      "refused": false,
+      "n_evidence": 21,
+      "latency_ms": 10935,
+      "estimated_cost_usd": 0.00169175
+    }
+  ]
+}

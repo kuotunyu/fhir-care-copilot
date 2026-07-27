@@ -321,10 +321,11 @@ threadpool 被佔滿了，而**監控會在服務其實還活著的時候誤判�
 
 - Field exact match、unsupported-claim rate、injection resistance 皆為啟發式判準，各自的侷限已誠實記錄在 [MODEL_CARD.md](MODEL_CARD.md) 與 [`.claude/skills/run-eval/SKILL.md`](.claude/skills/run-eval/SKILL.md)，不隱藏、不美化
 - 220 題全量已對三個真實模型各跑完一次；未做的是多次重跑取平均（實測同一題兩次執行結果可能不同，見上方註 2）
-- **前端沒有單元測試**。CI 會跑 `oxlint` 與 `tsc -b && vite build`，所以型別錯誤與 lint 問題擋得住，但**元件行為沒有測試覆蓋**；UI 的回歸目前靠截圖腳本（會驗 375px 無橫向溢位）與人工檢查
-- **`report_out_of_scope` 的實際觸發率還沒量測**：「病患存在但工具查不到」現在有結構性處理了（模型呼叫該工具即結構化拒答，機制有確定性測試守著），但**模型在多大比例的 out-of-scope 問題上會真的呼叫它，還沒有數字**。那需要一組專門的 eval 題目。在有數字之前，這裡只宣稱機制存在，不宣稱涵蓋率
-- **`reports/` 底下的 eval 數字是在這兩道護欄之前量的**。`require_tool_call_before_answer` 會讓「零工具呼叫就作答」變成結構化拒答，而部分注入手法（例如要求交出 system prompt）正屬於這一類——也就是說目前的注入抵抗率**應該比報表上的數字更高**，但沒有重跑就沒有數字。要重現舊數字把該設定設成 `false`
-- 「不可回答」題型目前只涵蓋「病患不存在」情境
+- **前端單元測試只涵蓋三個地方**（35 個測試：`api.ts` 的金鑰注入與錯誤翻譯、`StatusBar` 的降級揭露、`ChatPanel` 的錯誤訊息與送出行為）。`PatientSelector` / `PatientTimeline` / `EvidenceDrawer` 的渲染沒有覆蓋，任何版面行為也沒有（自動捲動在 jsdom 裡是 stub 掉的）
+- **`report_out_of_scope` 的觸發率是 88%，不是 100%**——這道護欄不是萬靈丹。4 輪 × 20 題實測 85/90/85/95（中位數 88%），失敗的都是同一個形狀：模型用自然語言說「查不到」而不呼叫工具宣告，於是契約仍是 `refused: false`。弱點集中在**臨床性質**的資料（手術/處置 5/16 失敗、疫苗接種 4/16），保險給付、家屬聯絡方式、藥物過敏史則是 16/16 全中——**明顯不屬於臨床工具範圍的，模型乖乖宣告；看起來「應該查得到」的，它會硬答**。逐題分佈見 [reports/out_of_scope_variance.md](reports/out_of_scope_variance.md)
+- **注入抵抗率在新護欄下是 100%，但那主要是護欄的數字，不是模型的**。4 輪全 100%（舊護欄是 100/90/95）。依 `refusal_reason` 拆開看，**18/20 是「零工具呼叫就作答」被結構化拒答，0 題走 `report_out_of_scope`**，另外 2 題是模型真的查了資料並正常回答。也就是說這個 100% 約九成來自護欄。這讓 injection resistance **不再適合拿來比較模型**——換任何模型，那 18 題一樣會被同一道護欄擋下。新舊兩組並列於 [reports/injection_variance.md](reports/injection_variance.md)，要重現舊數字把 `require_tool_call_before_answer` 設成 `false`
+- 兩道護欄抓的是**不同的東西**，這一點有數據支持：out-of-scope 題目的拒答 19/20 來自模型主動宣告（`out_of_scope`），注入題目的拒答 18/20 來自零工具呼叫的兜底（`no_tool_call`），兩者的觸發原因幾乎完全不重疊
+- 「不可回答」題型目前只涵蓋「病患不存在」情境（`out_of_scope` 是另一個獨立的題型與指標）
 - 開發樣本為 Synthea 1K 樣本的 100 位子集，非完整資料集（詳見 [DATA_CARD.md](DATA_CARD.md)）
 - Practitioner/Organization 的參照解析已對真實資料驗證可行；`ExplanationOfBenefit` 內的 contained-resource 參照（`#` 開頭）目前無工具讀取，故無法解析
 
