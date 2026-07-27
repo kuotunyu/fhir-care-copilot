@@ -6,6 +6,134 @@
 
 ---
 
+## 2026-07-27（續三）— 過敏題型進 eval，順帶抓到「跑得動但沒量到」
+
+上一節結尾自己標的缺口:「加了工具但沒有對應的 ground-truth 題目,這條路徑在
+eval 裡是盲的」。這一節補掉它,而補的過程又撞到同一個家族的第三個坑。
+
+### 一、過敏題型（14 題）
+
+標準答案直接來自 `list_allergies` 的回傳值,不人工標註——與其他四個資料題型
+相同。只挑真的有過敏紀錄的病患(14/100):沒有紀錄的病患,「查過,沒有」是合法的
+空結果,ground truth 是「空清單」而不是一組事實,判準與其他四類對不上。
+
+`gemini-3.1-flash-lite` 實測:
+
+| 指標 | 值 |
+|---|---|
+| Tool-selection accuracy | **100%** |
+| Citation validity | **100%** |
+| Unsupported-claim | **0%** |
+| Field exact match | 71.4%(10/14) |
+
+4 題沒對上的是同一個已知判準侷限——模型把過敏原譯成中文並保留原文
+(`Allergy to grass pollen` → 「草花粉(grass pollen)過敏」)。**71.4% 明顯高於
+其他資料題型的四成上下**,因為過敏原名稱短、改寫空間小。
+
+延遲刻意不列進比較表:這次量到 p50 12897 ms,而 220 題那次是 1376 ms。
+當天 Gemini 間歇回 503(同日的 out-of-scope 量測也撞到)。**那是供應商當下的
+狀態,不是題型的性質**,放同一張表比較會誤導。
+
+### 二、第三個「加了東西,某個清單沒跟上」
+
+`evaluate_case` 裡有一行寫死的白名單:
+
+```python
+if case.category in ("medication", "condition", "observation", "careplan"):
+```
+
+新題型不在名單上,於是 tool-selection、field match、unsupported-claim
+**三項對那 14 題全是 `None`**。而 eval 跑得完、JSON 照樣產出、沒有任何警告。
+
+**「跑得動但沒量到」比跑不動危險,因為它不會失敗。** 如果我沒去看那幾個欄位,
+這個題型會以「已納入 eval」的狀態進 git,實際上什麼都沒量。
+
+修法不是把 `allergy` 加進 tuple(那只是把坑往後推),是從 case 本身推導:
+
+```python
+if case.expected_resource_types:
+```
+
+「有標準答案」正是這三個指標適用的條件。injection / unanswerable /
+out_of_scope 的這個欄位本來就是空的,行為與原本逐字相同,但**下一個題型會
+自動被量到**。已驗證新測試會失敗:把白名單改回去,`allergy-000` 的
+`tool_selection_correct=None` 當場觸發斷言。
+
+### 三、今天這一輪的三個缺口是同一個形狀
+
+| 加了什麼 | 哪個清單沒跟上 | 修法 |
+|---|---|---|
+| 第 6 個工具 | `out_of_scope_questions_with_answers` 寫死 5 個呼叫 | 從 registry 驅動 |
+| 第 5 個資料題型 | `evaluate_case` 寫死 4 個題型名稱 | 從 `expected_resource_types` 推導 |
+| 兩次題庫擴充 | README 的「220 筆」 | 講清楚數字屬於哪份題庫 |
+
+三個都是**手列的清單與程式分岔**,三個都不會失敗。前兩個改成單一來源推導;
+第三個沒有把 220 改成 254——**那會變成「用 254 題量出這些數字」的假宣稱**,
+改成「下表是當時那 220 題的結果,題庫此後擴充過兩次,沒重跑就不改寫」。
+
+### 四、順帶:`run_eval.py` 是唯一不讀 `.env` 的腳本
+
+打真實 API 時它會在 `make_provider` 那一行才炸(`GEMINI_API_KEY 未設定`)。
+`run_repeat_eval.py`、`run_e2e_sample.py`、`publish_to_hf.py` 都有 `--load-env`,
+只有它沒有。補上,四支一致。
+
+### 五、測試輸出
+
+```
+uv run ruff check .        All checks passed!
+uv run mypy                Success: no issues found in 105 source files
+uv run pytest              (見下方)
+
+題型分佈: medication 45 / condition 45 / observation 45 / careplan 45 /
+          allergy 14 / unanswerable 20 / injection 20 / out_of_scope 20
+總計 254 題(原 220 → 加 out_of_scope 20 → 加 allergy 14)
+```
+
+### 六、三個模型的過敏題型,以及兩個都判錯的機械判準
+
+補跑另外兩個模型之後:
+
+| 指標 | gemini-3.1 | gpt-5.4-mini | gpt-5.4-nano |
+|---|---|---|---|
+| Tool-selection | 100% | 100% | 100% |
+| Citation validity | 100% | 100% | 100% |
+| Unsupported-claim | 0% | 0% | 0% |
+| **Field exact match** | 71.4% | 71.4% | **42.9%** |
+| 平均成本/題 | $0.00070 | $0.00209 | $0.00054 |
+
+看起來 nano 差一截。**但那是假的。**
+
+把三個模型合計 16 題 `field_match=False` 的逐字稿全部讀完:
+**沒有一筆答錯、沒有一筆漏掉過敏原、沒有一筆編造。** 差別只在寫法——
+`Allergy to grass pollen` 被寫成「草花粉(grass pollen)過敏」或「草花粉過敏」。
+
+而且 nano 那 8 筆是**全部 42 題裡最完整的答案**:
+
+- `allergy-008` 正確標出一筆 `狀態：inactive` 的乳製品過敏——那正是
+  `list_allergies` 刻意不過濾狀態的用意,模型如實轉達了
+- `allergy-010` 忠實回報 `類別：食物（categories: food）`,即使那是 Synthea
+  的資料瑕疵(草花粉不是食物)。**它沒有自作主張「修正」上游資料**,那是對的
+
+**我不服氣,又寫了第二個判準**:比對過敏原的英文關鍵字有沒有到齊。
+量出 98.3% / 90.0% / 78.3%,看起來坐實了「nano 真的比較差」。
+
+**那也是錯的。** 它敗在純中文的寫法——「草花粉過敏」裡沒有 `grass pollen`。
+
+**兩個獨立的機械判準都給出誤導性的排序,是讀完 16 份逐字稿才定案的。**
+如果我停在第一個判準,README 會寫「nano 在過敏題型上明顯較差」;
+停在第二個,我還會覺得自己「用更嚴謹的方法確認過了」。
+
+延遲那一項也得到旁證:gemini 這 14 題 p50 12897 ms,而 mini/nano 是
+3338 / 2734 ms——**同一個題型、同一批題目**,所以那個異常確定是供應商當下的
+狀態,不是題型的性質。這比我先前只能說「當天有 503」強得多。
+
+### 七、下一步
+
+- 藥物過敏的臨床用途要能展示,得換一份含 medication 類過敏的資料
+- 給 Space 專屬的 Gemini 金鑰
+
+---
+
 ## 2026-07-27（續二）— 新增 `list_allergies`：資料出口從五個變六個，理由是產品缺口
 
 使用者拍板加 `AllergyIntolerance` 工具。這是**第一次真的擴大資料出口**

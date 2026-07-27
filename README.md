@@ -123,7 +123,7 @@ flowchart LR
 
 ## Eval 結果（真實 API 呼叫，非預估值）
 
-自動從 FHIR 結構產生 220 筆有 deterministic 標準答案的題目（不人工標註），涵蓋藥物/疾病/觀察值/照護計畫各 45 題、不可回答 20 題、prompt injection 20 題。**以下是三個模型各跑完整 220 題的真實結果**（完整報告與逐字稿見 [reports/model_comparison_full.md](reports/model_comparison_full.md)、[MODEL_CARD.md](MODEL_CARD.md)）：
+自動從 FHIR 結構產生有 deterministic 標準答案的題目（不人工標註）。**下表是三個模型各跑完整 220 題的真實結果**——那份題庫是藥物/疾病/觀察值/照護計畫各 45 題 + 不可回答 20 + prompt injection 20。**題庫此後擴充過兩次**（2026-07-27 加 out-of-scope 20 題與過敏 14 題，目前 254 題），下表的數字仍然只代表當時那 220 題，沒有重跑就不會改寫（完整報告與逐字稿見 [reports/model_comparison_full.md](reports/model_comparison_full.md)、[MODEL_CARD.md](MODEL_CARD.md)）：
 
 | 指標 | Gemini `gemini-3.1-flash-lite`（預設） | OpenAI `gpt-5.4-mini` | OpenAI `gpt-5.4-nano` |
 |---|---|---|---|
@@ -138,6 +138,33 @@ flowchart LR
 | 平均成本／題 | $0.00053 | $0.00163 | **$0.00042** |
 
 ¹ 人工核閱逐字稿確認並非答錯，而是模型把英文藥名/診斷翻譯成正體中文或改寫格式（如 `Prediabetes` → `糖尿病前期 (Prediabetes)`），嚴格子字串比對抓不到這類改寫，此指標低估真實品質。**注意：先前公布的 54.2% 出自 30 題小樣本，全量跑出來只有四成上下——小樣本高估了約 13 個百分點。**
+
+### 過敏題型（2026-07-27 新增，三個模型各 14 題）
+
+隨 `list_allergies` 一起加的題型，標準答案同樣直接來自工具回傳值。**加了工具卻沒有對應題目，等於這條路徑在 eval 裡是盲的。**
+
+| 指標 | `gemini-3.1-flash-lite` | `gpt-5.4-mini` | `gpt-5.4-nano` |
+|---|---|---|---|
+| Tool-selection accuracy | **100.0%** | **100.0%** | **100.0%** |
+| Citation validity rate | **100.0%** | **100.0%** | **100.0%** |
+| Unsupported-claim rate | **0.0%** | **0.0%** | **0.0%** |
+| Field exact match rate | 71.4% | 71.4% | 42.9% |
+| 平均成本／題 | $0.00070 | $0.00209 | **$0.00054** |
+
+**那個 42.9% 是假的，而且我用第二個機械判準去查也查錯了。**
+
+全部 16 題 `field_match=False` 的逐字稿都讀過（三個模型合計，逐字稿在 `reports/eval_allergy_*.json`）：**沒有一筆答錯、沒有一筆漏掉過敏原、沒有一筆編造**。差別只在寫法——`Allergy to grass pollen` 被寫成「草花粉（grass pollen）過敏」或直接「草花粉過敏」。
+
+不服氣的話可以再看兩件事。`gpt-5.4-nano` 那 8 筆其實是**全部 42 題裡最完整的答案**：
+
+- `allergy-008` 正確標出一筆 `狀態：inactive` 的乳製品過敏——那正是 `list_allergies` 刻意不過濾狀態的用意，而模型如實轉達了
+- `allergy-010` 忠實回報 `類別：食物（categories: food）`，即使那是 [Synthea 的資料瑕疵](DATA_CARD.md)（草花粉不是食物）。**它沒有自作主張「修正」上游資料**，那是對的行為
+
+我後來寫了第二個判準（比對過敏原的英文關鍵字有沒有到齊），量出 98.3% / 90.0% / 78.3%，看起來像「nano 真的比較差」。**那也是錯的**——它敗在純中文的寫法（「草花粉過敏」裡沒有 `grass pollen`）。
+
+**兩個獨立的機械判準都給出誤導性的排序，是讀完 16 份逐字稿才定案的。** 這正是本專案一律附上全部逐字稿、不只公布聚合百分比的理由。
+
+> **延遲刻意不放進上表比較。** gemini 這 14 題量到 p50 12897 ms，而 mini/nano 是 3338 / 2734 ms，220 題那次的 gemini 是 1376 ms——當天 Gemini 間歇回 503（同日的 out-of-scope 量測也撞到，腳本重試三次才湊出完整一輪）。**那是供應商當下的狀態，不是題型或模型的性質。**
 
 ² **單次執行的百分比不可靠。** 同一組 20 題重跑多次：`gemini-3.1` 是 100/90/95（第 4 輪因免費層配額用完只跑到 19/20 題，已排除）、`gpt-5.4-mini` 是 100/100/100/100/90、`gpt-5.4-nano` 是 85/80/80/80/75——**三個模型沒有一個是穩定的**。完整分佈與逐一手法的失守次數見 [reports/injection_variance.md](reports/injection_variance.md)。
 　　這個判準本身也**被真實資料打臉過五次**（假陽性四次、假陰性一次），詳見 [MODEL_CARD.md](MODEL_CARD.md)「已知限制」。目前的版本與三種獨立視角的人工核閱在 40 題上逐題完全一致。
