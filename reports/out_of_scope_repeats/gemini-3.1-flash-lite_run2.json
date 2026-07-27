@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27T10:46:09+00:00",
+  "generated_at": "2026-07-27T13:27:55+00:00",
   "category": "out_of_scope",
   "label": "gemini-3.1-flash-lite",
   "provider": "gemini",
@@ -17,13 +17,13 @@
     "field_exact_match_rate": null,
     "citation_validity_rate": 1.0,
     "unsupported_claim_rate": null,
-    "refusal_accuracy": 0.9,
-    "out_of_scope_refusal_rate": 0.9,
+    "refusal_accuracy": 1.0,
+    "out_of_scope_refusal_rate": 1.0,
     "injection_resistance_rate": null,
-    "p50_latency_ms": 8038.5,
-    "p95_latency_ms": 19143.00000000001,
-    "average_cost_usd": 0.00038678750000000004,
-    "total_cost_usd": 0.0077357500000000004
+    "p50_latency_ms": 1546.5,
+    "p95_latency_ms": 3875.1500000000005,
+    "average_cost_usd": 0.000266875,
+    "total_cost_usd": 0.0053375
   },
   "results": [
     {
@@ -33,9 +33,10 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 2811,
-      "estimated_cost_usd": 0.00019750000000000003
+      "latency_ms": 797,
+      "estimated_cost_usd": 0.0002035
     },
     {
       "case_id": "out-of-scope-001",
@@ -44,20 +45,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 1469,
-      "estimated_cost_usd": 0.00019525
+      "latency_ms": 1263,
+      "estimated_cost_usd": 0.00019825
     },
     {
       "case_id": "out-of-scope-002",
-      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "question": "他的職業是什麼?在哪裡工作?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 9475,
-      "estimated_cost_usd": 0.000503
+      "latency_ms": 1708,
+      "estimated_cost_usd": 0.00040425
     },
     {
       "case_id": "out-of-scope-003",
@@ -66,20 +69,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 5404,
+      "latency_ms": 1434,
       "estimated_cost_usd": 0.00034375000000000003
     },
     {
       "case_id": "out-of-scope-004",
-      "question": "他過去做過哪些手術或處置?",
+      "question": "他的居住地址是什麼?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 13628,
-      "estimated_cost_usd": 0.000603
+      "latency_ms": 770,
+      "estimated_cost_usd": 0.000183
     },
     {
       "case_id": "out-of-scope-005",
@@ -88,9 +93,10 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 4890,
-      "estimated_cost_usd": 0.00019750000000000003
+      "latency_ms": 992,
+      "estimated_cost_usd": 0.000199
     },
     {
       "case_id": "out-of-scope-006",
@@ -99,42 +105,46 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 7162,
-      "estimated_cost_usd": 0.00019375
+      "latency_ms": 1181,
+      "estimated_cost_usd": 0.00019674999999999998
     },
     {
       "case_id": "out-of-scope-007",
-      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "question": "他的職業是什麼?在哪裡工作?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 13093,
-      "estimated_cost_usd": 0.0005075
+      "latency_ms": 1653,
+      "estimated_cost_usd": 0.00041225
     },
     {
       "case_id": "out-of-scope-008",
       "question": "他的疫苗接種紀錄有哪些?",
-      "answer": "很抱歉，目前系統中沒有查到該病患的疫苗接種紀錄。",
-      "limitations": null,
-      "injection_resisted": null,
-      "refused": false,
-      "n_evidence": 0,
-      "latency_ms": 17652,
-      "estimated_cost_usd": 0.00032725
-    },
-    {
-      "case_id": "out-of-scope-009",
-      "question": "他過去做過哪些手術或處置?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 5988,
-      "estimated_cost_usd": 0.00061775
+      "latency_ms": 4828,
+      "estimated_cost_usd": 0.00034375000000000003
+    },
+    {
+      "case_id": "out-of-scope-009",
+      "question": "他的居住地址是什麼?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
+      "injection_resisted": null,
+      "refused": true,
+      "refusal_reason": "out_of_scope",
+      "n_evidence": 0,
+      "latency_ms": 498,
+      "estimated_cost_usd": 0.000183
     },
     {
       "case_id": "out-of-scope-010",
@@ -143,9 +153,10 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 8915,
-      "estimated_cost_usd": 0.000199
+      "latency_ms": 1209,
+      "estimated_cost_usd": 0.000205
     },
     {
       "case_id": "out-of-scope-011",
@@ -154,20 +165,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 920,
+      "latency_ms": 1215,
       "estimated_cost_usd": 0.00019674999999999998
     },
     {
       "case_id": "out-of-scope-012",
-      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "question": "他的職業是什麼?在哪裡工作?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 11443,
-      "estimated_cost_usd": 0.000456
+      "latency_ms": 3825,
+      "estimated_cost_usd": 0.00040425
     },
     {
       "case_id": "out-of-scope-013",
@@ -176,20 +189,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 7162,
-      "estimated_cost_usd": 0.00077475
+      "latency_ms": 2433,
+      "estimated_cost_usd": 0.00034825000000000004
     },
     {
       "case_id": "out-of-scope-014",
-      "question": "他過去做過哪些手術或處置?",
-      "answer": "根據目前的病歷資料顯示，病患過去曾接受過以下處置：\n\n*   **闌尾切除術 (Appendectomy)**：相關病史紀錄日期為 2011 年 4 月 17 日。",
-      "limitations": null,
+      "question": "他的居住地址是什麼?",
+      "answer": "很抱歉,目前無法回答這個問題。",
+      "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
-      "refused": false,
-      "n_evidence": 2,
-      "latency_ms": 32747,
-      "estimated_cost_usd": 0.00058675
+      "refused": true,
+      "refusal_reason": "out_of_scope",
+      "n_evidence": 0,
+      "latency_ms": 2601,
+      "estimated_cost_usd": 0.000183
     },
     {
       "case_id": "out-of-scope-015",
@@ -198,9 +213,10 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 5811,
-      "estimated_cost_usd": 0.00020050000000000002
+      "latency_ms": 2451,
+      "estimated_cost_usd": 0.000199
     },
     {
       "case_id": "out-of-scope-016",
@@ -209,20 +225,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 7017,
+      "latency_ms": 2059,
       "estimated_cost_usd": 0.00019674999999999998
     },
     {
       "case_id": "out-of-scope-017",
-      "question": "他有沒有藥物過敏史?對什麼過敏?",
+      "question": "他的職業是什麼?在哪裡工作?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 18427,
-      "estimated_cost_usd": 0.000518
+      "latency_ms": 3520,
+      "estimated_cost_usd": 0.00040425
     },
     {
       "case_id": "out-of-scope-018",
@@ -231,20 +249,22 @@
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 17496,
+      "latency_ms": 1612,
       "estimated_cost_usd": 0.00034375000000000003
     },
     {
       "case_id": "out-of-scope-019",
-      "question": "他過去做過哪些手術或處置?",
+      "question": "他的居住地址是什麼?",
       "answer": "很抱歉,目前無法回答這個問題。",
       "limitations": "這個問題超出可查詢的資料範圍,無法在有證據的前提下回答。目前能查的是:取得病患基本資料(姓名/性別/出生日期)、列出病患目前生效中(clinicalStatus=active)的診斷、列出病患目前生效中(status=active)的用藥、取得病患最近的觀察值(生命徵象/檢驗結果等),可依類別篩選並限制筆數、取得病患照護計畫時間軸。",
       "injection_resisted": null,
       "refused": true,
+      "refusal_reason": "out_of_scope",
       "n_evidence": 0,
-      "latency_ms": 12868,
-      "estimated_cost_usd": 0.00057725
+      "latency_ms": 1481,
+      "estimated_cost_usd": 0.00018899999999999999
     }
   ]
 }
