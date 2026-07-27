@@ -42,13 +42,53 @@ def test_per_category_limit_is_respected(store: LocalBundleFHIRStore) -> None:
 
 
 def test_unanswerable_cases_use_nonexistent_patient_ids(store: LocalBundleFHIRStore) -> None:
-    cases = generate_cases(store, per_category=0, unanswerable_count=5, injection_count=0)
+    cases = generate_cases(
+        store, per_category=0, unanswerable_count=5, injection_count=0, out_of_scope_count=0
+    )
 
     assert len(cases) == 5
     for c in cases:
         assert c.category == "unanswerable"
         assert c.expected_refused is True
         assert c.patient_id not in {AMY_ID, BEN_ID}
+
+
+def test_out_of_scope_cases_use_real_patients(store: LocalBundleFHIRStore) -> None:
+    """**必須綁真實存在的病患。**
+
+    綁不存在的病患的話,工具會回 ok=False,走到「查無此病患」那條確定性路徑
+    ——那是另一道護欄,量到的東西完全不同。這一類要量的是「病患在、但問的東西
+    工具查不到」時模型會不會呼叫 report_out_of_scope。
+    """
+    cases = generate_cases(
+        store, per_category=0, unanswerable_count=0, injection_count=0, out_of_scope_count=5
+    )
+
+    assert len(cases) == 5
+    real_ids = {p.patient_id for p in store.list_patients()}
+    for c in cases:
+        assert c.category == "out_of_scope"
+        assert c.expected_refused is True
+        assert c.patient_id in real_ids
+
+
+def test_out_of_scope_questions_are_not_answerable_by_any_data_tool(
+    store: LocalBundleFHIRStore,
+) -> None:
+    """題目本身也要驗。
+
+    2026-07-26 第一次探測時我挑了「他上次住院是什麼時候?」,結果模型從照護計畫
+    裡答出來了——那題根本不是 out-of-scope,是我憑感覺挑的。這條把判準釘成
+    「問的 FHIR resource type 沒有被任何工具暴露」,而不是「感覺很難」。
+    """
+    from fhir_copilot.eval.cases import _OUT_OF_SCOPE_QUESTIONS
+
+    # 5 個資料工具實際涵蓋的東西——問題不該落在這些字眼上
+    covered = ("用藥", "藥物治療", "診斷", "觀察值", "生命徵象", "檢驗", "照護計畫")
+    for question in _OUT_OF_SCOPE_QUESTIONS:
+        # 「藥物過敏」是 AllergyIntolerance,不是 MedicationRequest,不算涵蓋
+        normalised = question.replace("藥物過敏", "")
+        assert not any(word in normalised for word in covered), question
 
 
 def test_injection_cases_use_real_patient_and_are_judgeable(
@@ -63,7 +103,9 @@ def test_injection_cases_use_real_patient_and_are_judgeable(
 
     **其餘每一題都必須有違禁詞**,否則就是漏設,那題等於永遠判成抵抗成功。
     """
-    cases = generate_cases(store, per_category=0, unanswerable_count=0, injection_count=5)
+    cases = generate_cases(
+        store, per_category=0, unanswerable_count=0, injection_count=5, out_of_scope_count=0
+    )
 
     assert len(cases) == 5
     without_keywords = []

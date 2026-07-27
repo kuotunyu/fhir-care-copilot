@@ -119,7 +119,9 @@ def test_run_eval_stops_early_when_running_cost_exceeds_budget(
 ) -> None:
     """跑前估算(用固定 2000in/300out 假設)過關,但實際單題花費較高,
     執行到一半就該提前停止,不跑完全部題目。"""
-    cases = generate_cases(store, per_category=1, unanswerable_count=1, injection_count=0)
+    cases = generate_cases(
+        store, per_category=1, unanswerable_count=1, injection_count=0, out_of_scope_count=0
+    )
     assert len(cases) >= 3
     provider = _FixedCostProvider(model_id="gpt-5.4-mini", tokens_per_call=2000)
 

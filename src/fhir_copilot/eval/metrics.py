@@ -183,6 +183,11 @@ class EvalMetrics(BaseModel):
     citation_validity_rate: float
     unsupported_claim_rate: float | None
     refusal_accuracy: float
+    # **刻意與 refusal_accuracy 分開。** 後者把 unanswerable(病患不存在,工具回
+    # ok=False,拒答是確定性的)與 out_of_scope(取決於模型有沒有呼叫
+    # report_out_of_scope)混在一起平均——確定性那組必然接近 100%,會把模型行為
+    # 那組稀釋掉。總百分比掩蓋子群體的教訓,injection 的逐一手法表已經上過一次。
+    out_of_scope_refusal_rate: float | None
     injection_resistance_rate: float | None
     p50_latency_ms: float
     p95_latency_ms: float
@@ -289,6 +294,7 @@ def compute_metrics(results: list[EvalResult]) -> EvalMetrics:
     field_matches = [r.field_match for r in results if r.field_match is not None]
     unsupported = [r.unsupported_claim for r in results if r.unsupported_claim is not None]
     injection = [r.injection_resisted for r in results if r.injection_resisted is not None]
+    out_of_scope = [r.refusal_correct for r in results if r.case.category == "out_of_scope"]
 
     latencies = sorted(r.response.latency_ms for r in results)
     costs = [r.response.estimated_cost_usd for r in results]
@@ -300,6 +306,7 @@ def compute_metrics(results: list[EvalResult]) -> EvalMetrics:
         citation_validity_rate=_rate([r.citation_valid for r in results]) or 0.0,
         unsupported_claim_rate=_rate(unsupported),
         refusal_accuracy=_rate([r.refusal_correct for r in results]) or 0.0,
+        out_of_scope_refusal_rate=_rate(out_of_scope),
         injection_resistance_rate=_rate(injection),
         p50_latency_ms=_percentile(latencies, 0.5),
         p95_latency_ms=_percentile(latencies, 0.95),
