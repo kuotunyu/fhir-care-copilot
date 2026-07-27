@@ -245,6 +245,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "——不進 shell 歷史、不進 ps 的輸出。設定真的 API 金鑰時用這個。",
     )
     parser.add_argument(
+        "--set-secret-from-env-as",
+        action="append",
+        default=[],
+        metavar="LOCAL_NAME:SPACE_NAME",
+        help="從本機的 LOCAL_NAME 環境變數讀值,設成 Space 上叫 SPACE_NAME 的 secret。"
+        "用途是「本機與雲端用不同的金鑰,但程式讀的名字必須一樣」——例如給 Space "
+        "一把專屬的 Gemini 金鑰時,本機叫 GEMINI_API_KEY_SPACE、Space 上必須叫 "
+        "GEMINI_API_KEY(models.yaml 的 api_key_env)。名字對不上的話 Space 會"
+        "**安靜退回 mock**,而不是報錯。",
+    )
+    parser.add_argument(
+        "--unset-secret",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="**移除**一個 Space Secret(可重複)。設定得了卻移除不了的話,"
+        "換金鑰時舊的會永遠留在雲端服務的設定裡——例如把 Space 換成專屬金鑰時,"
+        "原本那幾把開發用的備援金鑰。只在 --execute 時生效。",
+    )
+    parser.add_argument(
         "--stage-dir",
         type=Path,
         default=None,
@@ -299,16 +319,24 @@ def main(argv: list[str] | None = None) -> int:
             logger.error("%s", exc)
             return 1
         secrets[name] = value
-    for name in args.set_secret_from_env:
+    pairs: list[tuple[str, str]] = [(n, n) for n in args.set_secret_from_env]
+    for raw in args.set_secret_from_env_as:
+        local, sep, remote = raw.partition(":")
+        if not sep or not local or not remote:
+            logger.error("--set-secret-from-env-as 格式錯誤(需要 LOCAL:SPACE):%s", raw)
+            return 1
+        pairs.append((local, remote))
+
+    for name, space_name in pairs:
         value = os.environ.get(name, "")
         if not value:
             # 只在真的要發布時才是致命的——dry-run 應該在沒有任何金鑰的機器上跑得完。
             level = logger.error if args.execute else logger.warning
-            level("--set-secret-from-env %s:環境變數未設定或為空", name)
+            level("環境變數 %s 未設定或為空(要設成 Space 的 %s)", name, space_name)
             if args.execute:
                 return 1
             continue
-        secrets[name] = value
+        secrets[space_name] = value
 
     logger.info("repo_id:       %s", args.repo_id)
     logger.info("visibility:    %s", "private" if args.private else "public")
@@ -332,6 +360,8 @@ def main(argv: list[str] | None = None) -> int:
             logger.warning("  - %s", link)
     if secrets:
         logger.info("secrets to set(僅列名稱,不印值): %s", ", ".join(sorted(secrets)))
+    if args.unset_secret:
+        logger.info("secrets to REMOVE: %s", ", ".join(sorted(args.unset_secret)))
 
     if args.stage_dir is not None:
         try:
@@ -351,11 +381,17 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("加 --execute 才會真的發布;真的發布需要 HF_TOKEN 環境變數。")
         return 0
 
-    return _execute_publish(args.repo_id, args.private, secrets, project_readme)
+    return _execute_publish(
+        args.repo_id, args.private, secrets, list(args.unset_secret), project_readme
+    )
 
 
 def _execute_publish(
-    repo_id: str, private: bool, secrets: dict[str, str], project_readme: Path
+    repo_id: str,
+    private: bool,
+    secrets: dict[str, str],
+    unset: list[str],
+    project_readme: Path,
 ) -> int:
     import tempfile
 
@@ -387,6 +423,13 @@ def _execute_publish(
     # 結果是:全新部署**必然**跑成 mock demo mode,而且網頁看起來完全正常。
     # 2026-07-26 首次部署實測就是這樣,/api/health 回 provider=mock,
     # budget_counting_since 顯示容器早於 secret 設定時間。
+    # **先移除再設定。** 換金鑰的情境裡,兩者是同一個動作的兩半:
+    # 把 Space 從「跟開發共用的一堆備援金鑰」換成「一把專屬金鑰」時,
+    # 只設定不移除的話,舊的那幾把會繼續留在雲端服務的設定裡。
+    for name in unset:
+        logger.info("移除 Space secret:%s", name)
+        api.delete_space_secret(repo_id, name)
+
     for name, value in secrets.items():
         logger.info("設定 Space secret:%s", name)
         api.add_space_secret(repo_id, name, value)
@@ -409,7 +452,7 @@ def _execute_publish(
             path_in_repo="README.md",
         )
 
-    if secrets:
+    if secrets or unset:
         # 上面的順序修好了「全新部署」。但**重跑**時 Space 可能正跑著一個舊容器,
         # 而內容沒變就不會觸發 build——那它會繼續用舊環境。明確重啟一次,
         # 讓「指令跑完 = 新設定生效」成立,不必人工去點。

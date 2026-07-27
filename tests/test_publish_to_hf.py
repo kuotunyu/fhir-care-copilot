@@ -79,6 +79,9 @@ class _RecordingHfApi:
     def upload_file(self, **kwargs: object) -> None:
         self.calls.append("upload_file")
 
+    def delete_space_secret(self, repo_id: str, key: str) -> None:
+        self.calls.append(f"unset:{key}")
+
     def restart_space(self, repo_id: str) -> None:
         self.calls.append("restart_space")
 
@@ -115,6 +118,36 @@ class TestPublishOrdering:
 
         calls = _RecordingHfApi.calls
         assert calls[-1] == "restart_space", f"重啟必須在最後,實際順序:{calls}"
+
+    def test_secrets_are_removed_before_being_set(self) -> None:
+        """換金鑰時「移除舊的」與「設定新的」是同一個動作的兩半。
+
+        把 Space 從「跟開發共用的一堆備援金鑰」換成「一把專屬金鑰」時,
+        只設定不移除的話,舊的那幾把會繼續留在雲端服務的設定裡
+        ——**設定得了卻移除不了,等於金鑰只進不出**。
+        """
+        pub.main(
+            [
+                "--repo-id",
+                "someone/space",
+                "--execute",
+                "--unset-secret",
+                "GEMINI_API_KEY_BACKUP",
+                "--set-secret",
+                "GEMINI_API_KEY=new",
+            ]
+        )
+
+        calls = _RecordingHfApi.calls
+        assert "unset:GEMINI_API_KEY_BACKUP" in calls
+        assert calls.index("unset:GEMINI_API_KEY_BACKUP") < calls.index("secret:GEMINI_API_KEY")
+        assert calls.index("unset:GEMINI_API_KEY_BACKUP") < calls.index("upload_folder")
+
+    def test_unsetting_alone_still_restarts(self) -> None:
+        """只移除、不新增,也必須重啟——否則舊容器會繼續拿著那把金鑰跑。"""
+        pub.main(["--repo-id", "someone/space", "--execute", "--unset-secret", "OLD_KEY"])
+
+        assert _RecordingHfApi.calls[-1] == "restart_space"
 
     def test_no_restart_when_there_are_no_secrets(self) -> None:
         """沒有 secret 要生效就不必重啟——無謂的重啟會讓訪客斷線。"""
@@ -196,6 +229,36 @@ class TestSecretFromEnv:
             ["--repo-id", "someone/space", "--set-secret-from-env", "FAKE_KEY_FOR_TEST"]
         )
         assert exit_code == 0
+
+    def test_local_name_can_differ_from_the_space_name(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """本機與 Space 用不同的環境變數名稱。
+
+        給 Space 一把專屬金鑰時,本機叫 GEMINI_API_KEY_SPACE(才不會蓋掉開發用的),
+        但 Space 上必須叫 GEMINI_API_KEY——那是 models.yaml 的 api_key_env。
+        **名字對不上的話 Space 會安靜退回 mock,不會報錯**,那正是這個專案
+        2026-07-26 已經踩過一次的坑。
+        """
+        caplog.set_level("INFO")
+        monkeypatch.setenv("GEMINI_API_KEY_SPACE", "space-only-key")
+
+        exit_code = pub.main(
+            [
+                "--repo-id",
+                "someone/space",
+                "--set-secret-from-env-as",
+                "GEMINI_API_KEY_SPACE:GEMINI_API_KEY",
+            ]
+        )
+
+        assert exit_code == 0
+        # 印出來的是 **Space 上的名字**,不是本機的
+        assert "GEMINI_API_KEY" in caplog.text
+        assert "space-only-key" not in caplog.text
+
+    def test_malformed_rename_is_rejected(self) -> None:
+        assert pub.main(["--repo-id", "someone/space", "--set-secret-from-env-as", "NOCOLON"]) == 1
 
     def test_missing_variable_aborts_before_publishing(
         self, monkeypatch: pytest.MonkeyPatch

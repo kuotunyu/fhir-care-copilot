@@ -28,10 +28,28 @@ providers:
     sdk: google-genai
     api_key_env: GEMINI_API_KEY
     # 備用 key(429 quota failover,選配,見 PLAN.md §10 風險表)
-    backup_api_key_envs:
-      - GEMINI_API_KEY_BACKUP
-      - GEMINI_API_KEY_BACKUP2
-      - GEMINI_API_KEY_BACKUP3
+    #
+    # **2026-07-28 從三把縮成零把,理由是實測發現其中兩把一直是死的。**
+    #
+    # 逐把打一次最小呼叫的結果:
+    #   GEMINI_API_KEY          可用(免費層)
+    #   GEMINI_API_KEY_BACKUP   429「Your prepayment credits are depleted」
+    #   GEMINI_API_KEY_BACKUP2  429「Your prepayment credits are depleted」
+    #   GEMINI_API_KEY_BACKUP3  可用(免費層,且與主金鑰不同專案)
+    #
+    # 那兩把掛在一個預付額度已耗盡的帳單帳戶下。**那不是「今天用完了」,
+    # 是從設定進去就不能用**——付費層沒有免費額度,沒錢就是一次都不給,
+    # 隔天也不會重置。而 failover 每次主金鑰配額用完都會老實去試它們、
+    # 失敗、再往下跳:日誌裡那三行「配額用完,切換備援金鑰」有兩行是在試死金鑰,
+    # 診斷時被誤導過一次。
+    #
+    # **`_BACKUP3` 改為專供 HF Space 使用**(在 Space 上設成 `GEMINI_API_KEY`),
+    # 所以本機這裡也不列它——列了的話本機 eval 會在主金鑰用完時跳去吃 Space 的
+    # 額度,等於沒分開。分開的意義就是「跑 eval 不會害 demo 掛掉」。
+    #
+    # 要恢復 failover:先確認那把金鑰真的能用(不要只看主控台的 Billing Tier
+    # ——它顯示 Tier 1 Prepay,但 API 回的是額度歸零),再加回這個清單。
+    backup_api_key_envs: []
 
   openai:
     model_id: gpt-5.4-mini

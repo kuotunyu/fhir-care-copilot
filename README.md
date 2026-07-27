@@ -440,6 +440,21 @@ uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --
 - **`--set-secret-from-env` 優於 `--set-secret NAME=VALUE`**：後者會把金鑰留在
   shell 歷史與 `ps` 的輸出裡。設定真的 API 金鑰時用前者，命令列上只出現名稱。
 
+### 給 Space 一把專屬金鑰（不要跟開發共用）
+
+公開 demo 與本機開發、eval 共用同一份免費層額度時，跑一次全量 eval 就可能讓 demo 當天只剩拒答。分開的做法：
+
+```bash
+uv run python scripts/publish_to_hf.py --repo-id <username>/fhir-care-copilot --load-env --execute   --set-secret FHIR_COPILOT_PROVIDER=gemini   --set-secret-from-env-as GEMINI_API_KEY_SPACE:GEMINI_API_KEY   --unset-secret GEMINI_API_KEY_BACKUP --unset-secret GEMINI_API_KEY_BACKUP2   --unset-secret GEMINI_API_KEY_BACKUP3
+```
+
+三個細節都是踩過才知道的：
+
+- **金鑰要開在新的 Google Cloud 專案**，但**新專案不等於有額度**。免費層配額是 per project（API 的 429 訊息直接寫著 `GenerateRequestsPerDayPerProjectPerModel-FreeTier`），可是如果 AI Studio 把新專案綁到一個**預付額度已耗盡**的帳單帳戶，那個專案會變成 Tier 1 而**沒有免費額度**——`Your prepayment credits are depleted`，隔天也不會重置。**綁到耗盡的付費帳戶比留在免費層更糟。**
+- **推上去之前先在本機驗那把金鑰**，而且要**單獨驗**（不要帶 failover，否則新金鑰壞掉也會被備援救起來，等於沒驗）。實測就靠這一步攔下一把不能用的新金鑰
+- **`--set-secret-from-env-as LOCAL:SPACE`**：本機叫 `GEMINI_API_KEY_SPACE`（才不會蓋掉開發用的），Space 上必須叫 `GEMINI_API_KEY`（`models.yaml` 的 `api_key_env`）。**名字對不上時 Space 會安靜退回 mock，不會報錯**
+- **`--unset-secret`**：舊的備援金鑰要移除。只設定不移除的話，開發金鑰會永遠留在雲端服務的設定裡——**設定得了卻移除不了，等於金鑰只進不出**
+
 **部署後務必確認 `/api/health` 的 `provider` 欄位不是 `mock`。** 服務本身會誠實
 揭露降級狀態——前端狀態列在 demo mode 下顯示「示範模式／尚未連接真實 AI」而非
 「已連線真實 AI 模型」——但**發布流程不會告訴你**，所以那一步要自己做。
