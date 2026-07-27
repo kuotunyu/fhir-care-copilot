@@ -311,7 +311,10 @@ class TestUploadSet:
     原本的 dry-run 只印出排除樣式,不模擬檔案集合,所以看不出「README 連到的檔案
     被排除了」——那要等真的發布、點開 Space 首頁才會發現連結 404。實測就抓到兩個:
     整個 `reports/` 被排掉(README 連到 5 個 .md),以及 `.claude/*` 連 skills 一起
-    排掉(README 連到 run-eval 的 SKILL.md)。
+    排掉(當時 README 連到 run-eval 的 SKILL.md)。
+
+    後者現在**刻意**整個排除:那份內容已搬到 `docs/EVAL.md`,`.claude/` 不再進 git。
+    這條測試的價值不變——它擋的是「未來改 README 時連到不會上傳的東西」。
     """
 
     def test_secrets_are_never_uploaded(self) -> None:

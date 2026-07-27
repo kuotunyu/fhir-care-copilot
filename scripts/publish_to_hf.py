@@ -66,12 +66,15 @@ UPLOAD_IGNORE_PATTERNS = [
     ".mypy_cache/*",
     ".ruff_cache/*",
     ".pytest_cache/*",
-    # `.claude/` 底下只有兩類東西:開發機的編輯器設定(launch.json、settings.local.json)
-    # 與**專案 skill 文件**。前者對讀者沒有意義,後者有——README 直接連到
+    # `.claude/` 整個排除。原本只排除設定檔、保留 skills,因為 README 連到
     # `.claude/skills/run-eval/SKILL.md`(eval 的指標定義與已知限制寫在那裡)。
-    # 所以只排除設定檔,skills 照上傳。
-    ".claude/launch.json",
-    ".claude/settings*",
+    # 2026-07-28 起那份內容搬到 `docs/EVAL.md`,`.claude/` 也不再進 git
+    # ——它底下剩下的都是開發機的工具設定,對讀者沒有意義。
+    ".claude/*",
+    # 同一批:內部的規劃文件與 AI 助理工作約定,2026-07-28 起不進 git 也不進 Space。
+    # 它們仍在開發者本機,只是不對外——Space 是公開的,標準與 repo 一致。
+    "PLAN.md",
+    "CLAUDE.md",
     # **只排除 reports 底下的原始 JSON,保留 .md**(12 個檔、69 KB)。
     #
     # README 直接連到 reports/model_comparison_full.md、injection_ab.md、

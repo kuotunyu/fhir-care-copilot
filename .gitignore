@@ -19,6 +19,14 @@ build/
 node_modules/
 app/dist/
 
+# 內部工作文件 — 留在本機,不對外
+# PLAN.md 是 milestone 追蹤、CLAUDE.md 是 AI 助理的工作約定、.claude/ 是編輯器與
+# skill 設定。三者對讀者沒有意義,對開發仍然需要,所以是「不追蹤」而不是刪除。
+# README 原本連到 .claude/skills/run-eval/SKILL.md,那份內容已搬到 docs/EVAL.md。
+/PLAN.md
+/CLAUDE.md
+/.claude/
+
 # 本地雜項
 .DS_Store
 Thumbs.db
