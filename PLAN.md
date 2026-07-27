@@ -30,7 +30,7 @@
 - [x] **M1 — 資料層**（2026-07-19 實作,2026-07-24 21-agent 審查修正完成）
   `scripts/download_or_generate_synthea.py`：預設下載官方 1K FHIR R4 樣本（URL 見 §7）+ `--subset N`（預設 100）子集化到 `data/processed`；偵測到 Java 17+ 時可 `-s <seed> -p 500` 本地生成。`FHIRStore` interface（Protocol）+ `LocalBundleFHIRStore`：病患索引、依 type/status/date 查資源、解析 `urn:uuid:` 參照、容忍 conditional search URL 參照、跳過 `hospitalInformation*.json` / `practitionerInformation*.json`。預留 HAPI FHIR base URL adapter 介面（只留 interface，不實作）。測試 fixture：committed 的 2–3 位手工裁剪合成病患（需涵蓋 `stopped` 與 `completed` 兩種藥物狀態、`medicationCodeableConcept` 與 `medicationReference` 兩種編碼）。
   **驗收**：store 單元測試綠；真實下載 1K 樣本、子集化 100 位並成功載入列出。
-- [x] **M2 — 工具層（5 個唯讀工具）**（2026-07-19 實作,2026-07-24 16-agent 審查修正完成）
+- [x] **M2 — 工具層（5 個唯讀工具）**（2026-07-19 實作,2026-07-24 16-agent 審查修正完成；**2026-07-27 增為 6 個資料工具**——新增 `list_allergies`，理由是產品缺口而非 eval 需要，見 PROGRESS 當日紀錄）
   `get_patient_demographics`、`list_active_conditions`、`list_active_medications`、`get_recent_observations`、`get_care_plan_timeline`。全部 Pydantic v2 嚴格 schema（輸入輸出皆是）；每個回傳值帶 `evidence[]`（resourceType/id）；查無資料回傳明確 insufficient 結構（不是空 list 混過去）。
   **驗收**：每工具獨立單元測試綠（含缺資料路徑）。
 - [x] **M3 — Agent loop + providers**（2026-07-24 完成）
