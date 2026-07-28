@@ -6,6 +6,76 @@
 
 ---
 
+## 2026-07-28（續六）— 收尾檢查抓到:那三份文件其實還公開躺在 Space 上
+
+跑一次完整收尾檢查(金鑰掃描、不該進 git 的檔案、32 個 md 的斷鏈、README 數字
+對照程式)。前面幾項全乾淨,最後一項也對上了——`async def` 那 2 處是 exception
+handler 與 middleware,7 個 `@router` handler 確實全是同步 `def`;前端 35 個測試
+也對。**問題出在檢查清單之外的地方。**
+
+### 一、從 git 移除,不等於從公開的地方移除
+
+順手查了 Space 上的 README,發現是舊的 505 行版本。再查那三份文件:
+
+```
+HTTP 200  PLAN.md
+HTTP 200  CLAUDE.md
+HTTP 200  .claude/skills/run-eval/SKILL.md
+```
+
+**全部公開可讀。** 「續二」那一節做的是:從 git 移除 + 加進 `UPLOAD_IGNORE_PATTERNS`。
+當時還特地寫了「Space 也是公開的,標準要跟 repo 一致」——**但那個動作本身沒有
+達成那個目標**。
+
+`upload_folder` 的 `ignore_patterns` 只決定「這次傳什麼」,不會移除遠端已經存在的
+東西。把檔案加進排除清單,只是讓它**停止被更新**。而它從此不再出現在任何 diff 裡,
+所以更不容易被發現。
+
+### 二、修法:讓 Space 精確等於上傳集
+
+新增 `stale_remote_files(remote, uploaded)`,發布時先 `list_repo_files`,算出
+「Space 上有、但這次不會上傳」的那些,傳給 `upload_folder(delete_patterns=...)`,
+並在 log 裡逐個印出來。`.gitattributes` 排除在外(HF 自己產生的,管 LFS 設定)。
+
+對真實 Space 算出來是 6 個,其中一個是意外收穫:
+
+```
+.claude/skills/{dev-loop,run-eval,synthea-data}/SKILL.md
+CLAUDE.md
+PLAN.md
+scripts/run_injection_repeats.py     <- 改名前的舊檔,改名那次也沒被清掉
+```
+
+**同一個洞,兩種形狀。** 改名 = 舊名字停止被上傳 = 舊檔永遠留著。
+
+### 三、測試分兩層,因為「算對了」不等於「傳下去了」
+
+`stale_remote_files()` 有三條純函式測試(該刪的有列出來、該留的沒被列、
+`.gitattributes` 不動)。但那三條全綠,只要忘了把結果接到
+`upload_folder(delete_patterns=...)`,Space 上的舊檔還是原封不動。
+
+所以另外加一條**測接線**的:讓假的 HfApi 記下實際收到的 `delete_patterns`。
+把 `delete_patterns=stale or None` 那一行拿掉之後確認它會紅——只有那一條紅,
+三條純函式測試全部照常綠。**那正是它們測不到那個洞的證明。**
+
+### 四、驗證
+
+```
+ruff / format / mypy   全過
+pytest                 exit 0(拔掉修正後 test_stale_remote_files_reach_upload_folder 紅)
+金鑰掃描               乾淨
+不該進 git 的檔案      乾淨
+32 個 md 的連結        0 斷
+README 數字 vs 程式    工具 6+1、端點 7、前端測試 35,全對上
+Space /api/health      provider=gemini, demo_mode=false, 活著
+```
+
+### 五、下一步
+
+- **要跑一次重新發布**,那 6 個檔案才會真的從 Space 上消失。修好腳本不等於修好現況
+
+---
+
 ## 2026-07-28（續五）— docker job 加重試;而重試本身是會遮住訊號的東西
 
 `9d8376f` 的 CI `docker` job 紅了一次,失敗在**第一步**:

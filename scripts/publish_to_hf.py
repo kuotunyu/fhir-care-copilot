@@ -45,6 +45,7 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
@@ -181,6 +182,24 @@ def _simulate_upload() -> tuple[list[tuple[str, int]], int]:
             continue
         kept.append((rel, path.stat().st_size))
     return kept, sum(size for _, size in kept)
+
+
+def stale_remote_files(remote: Iterable[str], uploaded: set[str]) -> list[str]:
+    """Space 上有、但這次不會上傳的檔案——**必須明確刪掉,否則會一直留著**。
+
+    ``upload_folder`` 的 ``ignore_patterns`` 只決定「這次傳什麼」,不會移除
+    遠端已經存在的東西。所以把某個檔案加進排除清單,只是讓它**停止被更新**,
+    它仍然公開躺在 Space 上。
+
+    2026-07-28 實測踩到:把內部規劃文件從 git 移除、也加進了排除清單之後,
+    它們在 Space 上仍然是 HTTP 200。**從 git 移除但留在公開 Space 上,
+    等於沒移除。**
+
+    `.gitattributes` 由 HF 在建 repo 時自己產生,不在我們的上傳集裡,
+    刪掉它會動到 repo 的 LFS 設定——排除。
+    """
+    hf_managed = {".gitattributes"}
+    return sorted(p for p in remote if p not in uploaded and p not in hf_managed)
 
 
 def _broken_readme_links(uploaded: set[str], project_readme: Path) -> list[str]:
@@ -441,12 +460,25 @@ def _execute_publish(
         space_readme = Path(tmp) / "README.md"
         space_readme.write_text(assemble_space_readme(project_readme), encoding="utf-8")
 
+        # 排除清單只決定「這次傳什麼」,不會移除遠端已經存在的檔案。
+        # 所以要先算出 Space 上有、但不該再有的那些,明確刪掉。
+        kept, _total = _simulate_upload()
+        stale = stale_remote_files(
+            api.list_repo_files(repo_id, repo_type="space"),
+            {rel.replace("\\", "/") for rel, _size in kept},
+        )
+        if stale:
+            logger.warning("Space 上有 %d 個檔案不該再存在,將一併刪除:", len(stale))
+            for path in stale:
+                logger.warning("  - %s", path)
+
         logger.info("上傳專案內容(README 另用組好 front-matter 的版本覆蓋)...")
         api.upload_folder(
             repo_id=repo_id,
             repo_type="space",
             folder_path=str(REPO_ROOT),
             ignore_patterns=[*UPLOAD_IGNORE_PATTERNS, "README.md"],
+            delete_patterns=stale or None,
         )
         api.upload_file(
             repo_id=repo_id,

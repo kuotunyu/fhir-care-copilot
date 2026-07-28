@@ -39,7 +39,20 @@ Space 會退回 mock demo mode。
 後者會把金鑰留在 shell 歷史與 `ps` 的輸出裡。設定真的 API 金鑰時用前者，
 命令列上只出現名稱。
 
-### 4. front-matter 的 `colorFrom`/`colorTo` 有值域
+### 4. 排除清單不會刪掉 Space 上已經有的檔案
+
+`ignore_patterns` 只決定「這次傳什麼」。把一個檔案加進排除清單，只是讓它
+**停止被更新**——它仍然公開躺在 Space 上。
+
+2026-07-28 實測踩到：三份內部工作文件從 git 移除、也加進了排除清單，
+但在公開 Space 上仍然是 HTTP 200。**從 git 移除卻留在公開 Space 上，等於沒移除。**
+同一個洞還留下了一支改名前的舊腳本。
+
+腳本現在會先 `list_repo_files`，算出「Space 上有、但這次不會上傳」的那些，
+明確傳給 `upload_folder(delete_patterns=...)`，並在 log 裡逐個印出來。
+`.gitattributes` 排除在外——那是 HF 建 repo 時自己產生的，管的是 LFS 設定。
+
+### 5. front-matter 的 `colorFrom`/`colorTo` 有值域
 
 只接受 `red / yellow / green / blue / indigo / purple / pink / gray`。
 其他值會讓 HF 回 400——而那是**上傳了 184 個檔案之後**才發生的。

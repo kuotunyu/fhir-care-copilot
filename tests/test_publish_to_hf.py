@@ -63,9 +63,15 @@ class _RecordingHfApi:
 
     # 類別屬性:`_execute_publish` 自己 new 一個 HfApi,測試拿不到那個實例。
     calls: ClassVar[list[str]] = []
+    #: 假裝 Space 上目前有哪些檔案。預設放一個「已經不該存在」的,
+    #: 這樣每個走 `--execute` 的測試都會順帶經過刪除那條路徑。
+    remote_files: ClassVar[list[str]] = ["PLAN.md"]
+    #: `upload_folder` 實際收到的 `delete_patterns`——證明算出來的清單真的傳下去了。
+    delete_patterns: ClassVar[list[str] | None] = None
 
     def __init__(self, token: str | None = None) -> None:
         _RecordingHfApi.calls = []
+        _RecordingHfApi.delete_patterns = None
 
     def create_repo(self, repo_id: str, **kwargs: object) -> None:
         self.calls.append("create_repo")
@@ -73,8 +79,14 @@ class _RecordingHfApi:
     def add_space_secret(self, repo_id: str, name: str, value: str) -> None:
         self.calls.append(f"secret:{name}")
 
+    def list_repo_files(self, repo_id: str, **kwargs: object) -> list[str]:
+        self.calls.append("list_repo_files")
+        return list(self.remote_files)
+
     def upload_folder(self, **kwargs: object) -> None:
         self.calls.append("upload_folder")
+        patterns = kwargs.get("delete_patterns")
+        _RecordingHfApi.delete_patterns = list(patterns) if isinstance(patterns, list) else None
 
     def upload_file(self, **kwargs: object) -> None:
         self.calls.append("upload_file")
@@ -154,6 +166,19 @@ class TestPublishOrdering:
         pub.main(["--repo-id", "someone/space", "--execute"])
 
         assert "restart_space" not in _RecordingHfApi.calls
+
+    def test_stale_remote_files_reach_upload_folder(self) -> None:
+        """**算對了不等於傳下去了。** 這條測的是接線,不是那個純函式。
+
+        `stale_remote_files()` 有自己的單元測試,但那些即使全綠,
+        只要忘了把結果放進 `upload_folder(delete_patterns=...)`,
+        Space 上的舊檔案還是會原封不動地留著。
+        """
+        pub.main(["--repo-id", "someone/space", "--execute"])
+
+        calls = _RecordingHfApi.calls
+        assert calls.index("list_repo_files") < calls.index("upload_folder")
+        assert _RecordingHfApi.delete_patterns == ["PLAN.md"]
 
 
 class TestFrontMatterValidation:
@@ -384,3 +409,36 @@ class TestUploadSet:
         uploaded = {rel for rel, _size in kept}
         assert "reports/model_comparison_full.md" in uploaded
         assert not [p for p in uploaded if p.startswith("reports/") and p.endswith(".json")]
+
+
+class TestStaleRemoteFiles:
+    """Space 上有、但**不該再有**的檔案要被明確刪掉。
+
+    2026-07-28 實測踩到的洞:把三份內部工作文件從 git 移除、也加進了
+    `UPLOAD_IGNORE_PATTERNS`,結果它們在公開 Space 上仍然是 HTTP 200。
+    因為 `ignore_patterns` 只決定「這次傳什麼」,不會移除遠端已存在的東西
+    ——**排除清單讓檔案停止被更新,不會讓它消失。**
+    """
+
+    def test_removed_files_are_flagged_for_deletion(self) -> None:
+        """這條直接對著那次的洞:三份文件在遠端、不在上傳集,就必須被列出來刪。"""
+        kept, _total = pub._simulate_upload()
+        uploaded = {rel.replace("\\", "/") for rel, _size in kept}
+        removed = ["PLAN.md", "CLAUDE.md", ".claude/skills/run-eval/SKILL.md"]
+
+        # 前提:它們真的已經不在上傳集裡,否則這條測試測不到東西。
+        assert not [p for p in removed if p in uploaded]
+
+        stale = pub.stale_remote_files([*uploaded, *removed], uploaded)
+        assert stale == sorted(removed)
+
+    def test_files_still_uploaded_are_never_deleted(self) -> None:
+        """**這是最不能錯的一條。** 把要上傳的東西列進刪除清單,等於清空 Space。"""
+        kept, _total = pub._simulate_upload()
+        uploaded = {rel.replace("\\", "/") for rel, _size in kept}
+        assert pub.stale_remote_files(uploaded, uploaded) == []
+
+    def test_hf_managed_gitattributes_is_left_alone(self) -> None:
+        """`.gitattributes` 由 HF 建 repo 時自己產生,不在我們的上傳集裡。
+        照「遠端有、上傳集沒有就刪」的規則會誤刪,而它管的是 repo 的 LFS 設定。"""
+        assert pub.stale_remote_files([".gitattributes"], set()) == []
