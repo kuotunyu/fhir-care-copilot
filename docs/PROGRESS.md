@@ -2601,7 +2601,7 @@ CI 的 Windows 相容性本機能驗到的部分（真正的 CI 綠要等 push �
 - `scripts/publish_to_hf.py`：預設 dry-run(不需金鑰、不呼叫任何 HF API)，`--execute` 才真的發布(需要 `HF_TOKEN`)；用 `HfApi.create_repo`/`upload_folder`/`add_space_secret`；README 發布時另組 HF Space 要求的 front-matter(`sdk: docker`/`app_port`)接在專案 README 內容前面，避免兩份 README 分岔維護；新增 `huggingface_hub` 為 dev 依賴(只有這個 script 用得到，不進 runtime 依賴)
 - `tests/test_publish_to_hf.py`：8 個新測試(dry-run 行為、secret 值不外洩到 log、`--set-secret` 格式驗證、README front-matter 組合、缺 README 時提前失敗不呼叫任何網路)
 - `Dockerfile`(multi-stage:node build → python:3.13-slim runtime,UID 1000)、`docker-compose.yml`、`.dockerignore`
-- README.md 改寫成完整版:90 秒 demo 步驟、Mermaid 架構圖、安全邊界對照表、5 個工具說明、真實 eval 結果表(附兩個已知限制的註解)、成本、技術棧、開發/Docker/發布指令、面試談法五點、已知限制
+- README.md 改寫成完整版:90 秒 demo 步驟、Mermaid 架構圖、安全邊界對照表、5 個工具說明、真實 eval 結果表(附兩個已知限制的註解)、成本、技術棧、開發/Docker/發布指令、專案定位五點、已知限制
 
 **真實測試輸出**
 ```

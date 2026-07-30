@@ -9,7 +9,7 @@ license: Apache-2.0
 date-released: "2026-07-24"
 abstract: >
   可追溯、工具受控、預設唯讀的長照個案查詢 agent,基於 Synthea 合成病患 FHIR R4 資料。
-  不是醫療診斷工具,僅供合成資料展示與作品集用途。
+  不是醫療診斷工具,僅供合成資料技術展示用途。
 preferred-citation:
   type: article
   title: "Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record"
