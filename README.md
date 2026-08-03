@@ -1,5 +1,8 @@
 # FHIR Care Copilot
 
+[![CI](https://github.com/kuotunyu/fhir-care-copilot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kuotunyu/fhir-care-copilot/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/kuotunyu/fhir-care-copilot)](https://github.com/kuotunyu/fhir-care-copilot/releases/latest)
+
 > **這不是醫療診斷工具。** 僅用於展示 healthcare interoperability 與 LLM agent 工程，
 > 所有病患資料皆為 [Synthea](https://github.com/synthetichealth/synthea) 產生的**合成資料**，不含任何真實個資。
 
@@ -9,10 +12,13 @@ FHIR `resourceType/id` 證據；資料不足時明確拒答。
 
 **線上 demo**：https://huggingface.co/spaces/steven0226/fhir-care-copilot
 
-> 免費層 **48 小時無人使用會 sleep**，第一位訪客要等容器喚醒。
-> 額度用完時不會壞掉，會回結構化拒答，但那時看到的就不是真正的 agent 回答了。
-> 隨時可查 [`/api/health`](https://steven0226-fhir-care-copilot.hf.space/api/health)：
-> `provider` 是 `gemini` 才是真的在跑模型，`mock` 代表退回 demo mode。
+公開 demo 固定使用 `mock` provider 與 Synthea 合成資料：deterministic、CPU-safe、
+不呼叫付費模型 API。它展示的是完整的 patient scope、tool、FHIR reference 與
+failure-path 接線，不代表外部模型品質或臨床可用性。FHIR reference 完整不等於 claim grounding，
+測試通過也不等於臨床可用。免費 Space 睡眠後首次開啟可能需要等待喚醒。
+
+**快速審查**：[Case Study](docs/CASE_STUDY.md) ·
+[75 秒展示影片](https://github.com/kuotunyu/fhir-care-copilot/releases/download/v0.2.0/FHIR_Care_Copilot_Demo_v0.2.0.mp4)
 
 **狀態**：M0–M7 完成，並補上營運層（認證/限流/預算、可觀測性、韌性、可信任的稽核軌跡）。
 延伸閱讀：[MODEL_CARD](MODEL_CARD.md)（eval 數字與模型限制）、

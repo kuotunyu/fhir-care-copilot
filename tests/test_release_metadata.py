@@ -27,3 +27,18 @@ def test_social_preview_is_the_required_png_size() -> None:
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     assert struct.unpack(">II", data[16:24]) == (1280, 640)
     assert len(data) < 1024 * 1024
+
+
+def test_readme_exposes_release_evidence_and_mock_demo_boundary() -> None:
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    required = (
+        "actions/workflows/ci.yml/badge.svg?branch=main",
+        "img.shields.io/github/v/release/kuotunyu/fhir-care-copilot",
+        "docs/CASE_STUDY.md",
+        "releases/download/v0.2.0/FHIR_Care_Copilot_Demo_v0.2.0.mp4",
+        "公開 demo 固定使用 `mock` provider",
+        "Synthea 合成資料",
+    )
+    assert all(value in text for value in required)
+    assert "`provider` 是 `gemini` 才是真的在跑模型" not in text
