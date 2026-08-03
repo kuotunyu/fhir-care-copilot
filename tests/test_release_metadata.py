@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 import tomllib
 from pathlib import Path
 
@@ -17,3 +18,12 @@ def test_package_and_citation_release_metadata_match() -> None:
     assert pyproject["project"]["version"] == RELEASE_VERSION
     assert citation["version"] == RELEASE_VERSION
     assert str(citation["date-released"]) == RELEASE_DATE
+
+
+def test_social_preview_is_the_required_png_size() -> None:
+    path = REPO_ROOT / "docs/portfolio/social-preview.png"
+    data = path.read_bytes()
+
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", data[16:24]) == (1280, 640)
+    assert len(data) < 1024 * 1024
