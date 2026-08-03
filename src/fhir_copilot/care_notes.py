@@ -94,7 +94,7 @@ def confirm_and_log(
     actor: str = "unknown",
     request_id: str = "-",
 ) -> ConfirmedCareNote:
-    """UI 明確確認後才呼叫。**先驗簽,再寫入**,且永遠不寫回 FHIR。
+    """Client 明確呼叫 confirm API 後才執行。**先驗簽,再寫入**,且永遠不寫回 FHIR。
 
     寫入走 ``AuditSink``:append-only、帶 hash chain、併發安全。
     後端是 Postgres 還是 JSONL 由有沒有 ``DATABASE_URL`` 決定,這裡不需要知道。

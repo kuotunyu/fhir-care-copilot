@@ -85,7 +85,7 @@ flowchart LR
 | **LLM 不直接碰資料庫** | LLM 只能透過 6 個 Pydantic v2 嚴格 schema 的唯讀工具取得資料；永遠看不到原始 FHIR bundle |
 | **工具輸出附可驗證 reference** | 工具回傳值附 `evidence[]`；eval 的 reference integrity 驗證已回傳的 FHIR reference 是否存在於本次使用的 Synthea store。這不代表自然語言回答已逐句 grounded |
 | **預設唯讀** | `READ_ONLY_TOOLS` allowlist 裡沒有任何 write 工具；`propose_care_note` **不在這份清單裡**，agent 迴圈呼叫不到它 |
-| **草稿 → 人工確認 → 稽核軌跡，永不寫回 FHIR** | UI 確認後才呼叫 `confirm_and_log`；**先驗草稿簽章再寫**，寫入 append-only + hash chain 的稽核軌跡。沒有任何路徑寫回 FHIR store |
+| **草稿 → 明確確認 → 稽核軌跡，永不寫回 FHIR** | Backend 提供 propose/confirm API，confirm 時**先驗草稿簽章再寫** append-only + hash chain audit；React confirmation UI 尚未實作。沒有任何路徑寫回 FHIR store |
 | **資料不足 → 結構化拒答** | 回應契約有 `refused: bool`；查無資料時明確拒答而非編造 |
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界，eval 內建 injection 題型 |
 | **病患範圍由伺服器端注入** | `patient_id` 從 LLM 看得到的工具 schema 中移除，由 agent loop 依 session 直接注入（[ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
@@ -112,7 +112,7 @@ HTTP client（真的中止請求）。`max_output_tokens` 也會傳到兩個 pro
 | `list_active_medications` | 生效中（`status=active`）的用藥 |
 | `get_recent_observations` | 最近的觀察值，可依類別篩選 |
 | `get_care_plan_timeline` | 照護計畫時間軸 |
-| `list_allergies` | 過敏與不耐紀錄。**不過濾狀態**——`inactive` 是「目前不認為有風險」、`refuted` 是「查過確認沒有」，兩者都與「沒有紀錄」不同，在「不能給他什麼」上漏一筆與多一筆的代價不對稱 |
+| `list_allergies` | 原樣列出過敏與不耐紀錄，**不依 status 過濾**；`active`／`inactive`／`refuted` 僅呈現 FHIR `clinicalStatus`／`verificationStatus`，不推導臨床風險或用藥結論 |
 | `report_out_of_scope` | **不查任何資料**：讓模型明講「這題上面的工具都涵蓋不到」 |
 
 輸入輸出皆為 Pydantic v2 嚴格 schema（`strict=True, extra="forbid"`），查無資料回傳明確的
@@ -189,14 +189,19 @@ mock provider 220 題全量也跑通了：tool-selection **85.0%**、legacy cita
 
 | 事實 | 控制 | 實際證據 |
 |---|---|---|
-| `/api/chat` 每次呼叫都花真錢，端點原本完全開放 | API key 認證、每 key token bucket 限流、每日成本上限 | 無 key 401；超速 429 + `Retry-After`；超預算 429 + `budget_exceeded`（不是 500）。[`test_auth`](tests/test_auth.py)、[`test_rate_limit`](tests/test_rate_limit.py)、[`test_budget`](tests/test_budget.py) |
+| `/api/chat` 每次呼叫都可能花錢 | 可選 API key authentication、每 caller token bucket 限流、每日成本上限 | `REQUIRE_AUTH=true` 時無 key 401；超速 429 + `Retry-After`；超預算 429 + `budget_exceeded`（不是 500）。[`test_auth`](tests/test_auth.py)、[`test_rate_limit`](tests/test_rate_limit.py)、[`test_budget`](tests/test_budget.py) |
 | 日誌與 trace 會經手病患資料 | PII 遮蔽（`patient_id` 使用 process-local keyed HMAC、自由文字只記形狀、姓名完全不記）、清洗 request ID、四層 span、`/metrics` | **grep 斷言測試**：跑完整條請求並捕捉所有日誌與 span，斷言合成姓名／原始文字／完整 id 都不在裡面。[`test_pii_redaction`](tests/test_pii_redaction.py) |
 | 外部 LLM provider 會超時、會 429、會回垃圾 | 單次呼叫逾時（下在 SDK，真的中止請求）、指數退避、熔斷 | 熔斷開啟後 provider 不再被呼叫（trace 上少一個 span）；重試成本記進預算。[`test_resilience`](tests/test_resilience.py) |
 | 稽核軌跡是「誰對哪位病患記了什麼」的憑據 | 草稿 HMAC 簽章 + hash chain + 併發安全的 append | 偽造草稿被擋且什麼都沒寫進去；竄改／刪除／重排任一列都能**指出是哪一列**。[`test_audit_trail`](tests/test_audit_trail.py) |
 
-參數全在 [`configs/ops.yaml`](configs/ops.yaml)。`/api/health`、`/api/patients*`、`/api/providers`
-不受守門保護——唯讀端點不花錢也不寫入，沒有理由擋；**健康檢查被認證擋住的話，
-它就不再是健康檢查了。**
+參數全在 [`configs/ops.yaml`](configs/ops.yaml)。`REQUIRE_AUTH=true` 時，`/api/chat`、
+care-note routes、`/api/patients` 與 patient summary 都要求有效 API key；auth 關閉時
+synthetic public demo 維持公開。`/api/health` 永遠公開，`/api/providers` 不含 patient data
+也保持公開。
+
+這裡只有 **API authentication**。它和「模型看不到／不能改寫 patient scope」是兩個不同
+邊界；目前沒有 user-to-patient entitlement、RBAC、tenant isolation 或 SMART-on-FHIR。
+因此 API key 不能被描述成 patient-level authorization。
 
 ### 稽核軌跡為什麼需要三件事一起
 
@@ -265,7 +270,7 @@ $ uv run python scripts/verify_audit_chain.py
 | 情況 | 行為 |
 |---|---|
 | 沒設 provider 金鑰 | 自動退回 mock，`demo_mode: true` |
-| 沒設 `FHIR_COPILOT_API_KEYS` | 認證層等於關閉，一律當 `anonymous` 放行 |
+| 沒設 `FHIR_COPILOT_API_KEYS` | 認證層等於關閉，synthetic demo routes 以 `anonymous` 放行 |
 | 設了金鑰但請求帶錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
 | `REQUIRE_AUTH=true` 但沒有任何金鑰 | **Fail closed**。設定矛盾時 fail open 等於「以為有保護，其實沒有」 |
 | 沒設 `DATABASE_URL` | 稽核軌跡用 JSONL 檔案模式 |
@@ -313,7 +318,7 @@ Eval 預算守門：預設 $5 上限，**跑前**依固定假設估算，超過�
 - **後端**：Python 3.13 + uv、FastAPI、Pydantic v2（嚴格 schema）
 - **前端**：React 19 + Vite 8 + TypeScript 6，靜態檔由 FastAPI 同一 process serve
 - **LLM providers**：Gemini（`google-genai`，手動 function-calling 迴圈）、OpenAI（Responses API）、Mock（deterministic）
-- **資料層**：`FHIRStore` protocol + `LocalBundleFHIRStore`，預留 HAPI FHIR adapter 介面
+- **資料層**：`FHIRStore` protocol + `LocalBundleFHIRStore`；HAPI FHIR adapter 是未實作 stub／future extension point，不是可用整合
 - **營運層**：OpenTelemetry、prometheus-client、psycopg（可選的 Postgres 稽核後端）
 - **品質工具**：ruff、mypy（strict）、pytest、pre-commit（`core.hooksPath`，見 [ADR 0002](docs/decisions/0002-python-313.md)）
 - **量測**：k6（併發矩陣與故障注入），腳本與原始輸出都在 repo 內
@@ -334,7 +339,8 @@ just hooks         # 啟用 git hooks(勿用 pre-commit install,見 ADR 0002)
 
 **Docker**：`docker compose up --build`，服務在 `http://localhost:8000`
 （容器內對外埠是 HF Docker Space 慣例的 `7860`）。
-image build 時已內建 100 位合成病患資料，容器啟動即可用，不需 runtime 再下載。
+image build 時會以固定 size + SHA-256 驗證 sep2019 Synthea artifact，再內建 100 位合成
+病患資料；容器啟動不需 runtime 下載。Image 內建 Python stdlib `/api/health` healthcheck。
 
 **發布到 Hugging Face Docker Space**：見 [docs/DEPLOY.md](docs/DEPLOY.md)
 ——含四個「會安靜失敗」的坑，以及怎麼給 Space 一把不跟開發共用的金鑰。

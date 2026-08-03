@@ -159,14 +159,30 @@ class TestWhichEndpointsAreProtected:
         assert body["auth_required"] is False
         assert body["api_key_count"] == 0
 
-    @pytest.mark.parametrize("path", ["/api/patients", "/api/providers"])
-    def test_read_only_endpoints_are_not_protected(
+    @pytest.mark.parametrize("path", ["/api/patients", f"/api/patients/{AMY_ID}/summary"])
+    def test_patient_bearing_read_endpoints_require_valid_key_when_auth_is_enabled(
         self, make_client: ClientFactory, path: str
     ) -> None:
-        """唯讀端點不花錢也不寫入,沒有理由擋——控制項要從領域推導。"""
+        """Patient-bearing read routes 與 chat 使用相同 authentication boundary。"""
         client = make_client(api_keys=f"demo:{VALID_KEY}", require_auth=True)
 
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={HEADER: "wrong"}).status_code == 401
+        assert client.get(path, headers={HEADER: VALID_KEY}).status_code == 200
+
+    def test_providers_remains_public(self, make_client: ClientFactory) -> None:
+        client = make_client(api_keys=f"demo:{VALID_KEY}", require_auth=True)
+
+        assert client.get("/api/providers").status_code == 200
+
+    @pytest.mark.parametrize("path", ["/api/patients", f"/api/patients/{AMY_ID}/summary"])
+    def test_patient_bearing_read_endpoints_remain_public_when_auth_is_disabled(
+        self, make_client: ClientFactory, path: str
+    ) -> None:
+        client = make_client(api_keys=f"demo:{VALID_KEY}")
+
         assert client.get(path).status_code == 200
+        assert client.get(path, headers={HEADER: "wrong"}).status_code == 200
 
     def test_care_note_endpoints_are_protected(self, make_client: ClientFactory) -> None:
         """care-note 不花錢,但它是唯一會寫入的路徑,所以一樣要認證。"""

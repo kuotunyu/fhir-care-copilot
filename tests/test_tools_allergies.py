@@ -54,11 +54,8 @@ def test_returns_every_record_with_evidence(store: LocalBundleFHIRStore) -> None
 class TestDoesNotFilterByStatus:
     """**這是這個工具與其他資料工具最重要的差異。**
 
-    conditions/medications 只回 active,因為「已解決的診斷」不是目前的診斷。
-    過敏不一樣:inactive 的意思是「目前不認為有風險」,不是「這件事沒發生過」;
-    refuted 的意思是「查過、確認沒有」,那與「沒有紀錄」是兩件事。
-
-    在「不能給他什麼」這個問題上,漏掉一筆與多給一筆的代價完全不對稱。
+    工具不替 ``inactive`` / ``refuted`` 做臨床解讀;它們與沒有紀錄是不同的
+    FHIR status,因此都原樣保留給下游顯示。
     """
 
     def test_inactive_record_is_returned_and_labelled(self, store: LocalBundleFHIRStore) -> None:

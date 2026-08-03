@@ -39,7 +39,9 @@ SAMPLE_URL = (
 )
 SAMPLE_ZIP = DATA_RAW / "synthea_sample_data_fhir_r4_sep2019.zip"
 SAMPLE_EXTRACT_DIR = DATA_RAW / "fhir_r4_sep2019"
-EXPECTED_ZIP_BYTES = 85_042_887  # 查證時的大小;不同時警告但不中止(上游可能更新)
+# 這是 versioned sep2019 artifact 的固定 identity;任一不符都 fail closed。
+EXPECTED_ZIP_BYTES = 85_042_887
+EXPECTED_ZIP_SHA256 = "a6fc595d9c0f4c646746af42f861b5a12d03c856af158dd837c764dfb81b66f8"
 
 JAR_URL = (
     "https://github.com/synthetichealth/synthea/releases/latest/download/"
@@ -54,18 +56,25 @@ SKIP_PREFIXES = ("hospitalInformation", "practitionerInformation")
 logger = logging.getLogger("synthea-data")
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _skip_download_is_valid(url: str, dest: Path) -> bool:
-    """略過下載前先驗證既有檔案大小,不要盲信「檔案存在=下載完整」。
+    """略過下載前先驗證既有檔案 identity,不要盲信「檔案存在=下載完整」。
 
     M1 審查發現:中斷的下載(Ctrl+C、斷線、睡眠)會在 dest 留下不完整檔案,
-    下次執行只檢查 dest.exists() 就當作已完成,之後才在 extract() 炸出
-    難懂的 BadZipFile。
+    Synthea sample 同時驗證大小與 SHA-256;其他非固定來源只確認非空。
     """
     if not dest.exists():
         return False
     size = dest.stat().st_size
     if url == SAMPLE_URL:
-        return size == EXPECTED_ZIP_BYTES
+        return size == EXPECTED_ZIP_BYTES and _sha256_file(dest) == EXPECTED_ZIP_SHA256
     return size > 0
 
 
@@ -93,16 +102,17 @@ def download(url: str, dest: Path, force: bool = False) -> None:
                         "  %d%%(%d / %d bytes)", downloaded * 100 // total, downloaded, total
                     )
                     next_report += total // 10
+        digest = sha256.hexdigest()
+        if url == SAMPLE_URL:
+            if downloaded != EXPECTED_ZIP_BYTES:
+                raise ValueError(f"Synthea sample 大小不符:{downloaded} != {EXPECTED_ZIP_BYTES}")
+            if digest != EXPECTED_ZIP_SHA256:
+                raise ValueError(f"Synthea sample SHA-256 不符:{digest} != {EXPECTED_ZIP_SHA256}")
         os.replace(tmp_dest, dest)
     except BaseException:
         tmp_dest.unlink(missing_ok=True)
         raise
-    logger.info("下載完成:%d bytes,sha256=%s", downloaded, sha256.hexdigest())
-    if url == SAMPLE_URL and downloaded != EXPECTED_ZIP_BYTES:
-        logger.warning(
-            "大小與查證時(%d bytes)不同——上游可能已更新,請人工確認內容",
-            EXPECTED_ZIP_BYTES,
-        )
+    logger.info("下載完成:%d bytes,sha256=%s", downloaded, digest)
 
 
 def _zip_json_member_count(zip_path: Path) -> int:

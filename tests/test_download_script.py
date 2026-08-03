@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -31,6 +32,12 @@ class TestSkipDownloadIsValid:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(dogs, "EXPECTED_ZIP_BYTES", 10)
+        monkeypatch.setattr(
+            dogs,
+            "EXPECTED_ZIP_SHA256",
+            hashlib.sha256(b"1234567890").hexdigest(),
+            raising=False,
+        )
         dest = tmp_path / "sample.zip"
         dest.write_bytes(b"1234")  # 4 bytes,不是 10
 
@@ -38,6 +45,21 @@ class TestSkipDownloadIsValid:
 
         dest.write_bytes(b"1234567890")  # 剛好 10 bytes
         assert dogs._skip_download_is_valid(dogs.SAMPLE_URL, dest) is True
+
+    def test_sample_url_rejects_same_size_with_wrong_checksum(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(dogs, "EXPECTED_ZIP_BYTES", 4)
+        monkeypatch.setattr(
+            dogs,
+            "EXPECTED_ZIP_SHA256",
+            hashlib.sha256(b"good").hexdigest(),
+            raising=False,
+        )
+        dest = tmp_path / "sample.zip"
+        dest.write_bytes(b"evil")
+
+        assert dogs._skip_download_is_valid(dogs.SAMPLE_URL, dest) is False
 
     def test_other_url_only_requires_nonempty(self, tmp_path: Path) -> None:
         dest = tmp_path / "other.jar"
@@ -48,6 +70,20 @@ class TestSkipDownloadIsValid:
 
 
 class TestDownloadAtomicity:
+    class _BytesResponse:
+        def __init__(self, data: bytes) -> None:
+            self.headers = {"Content-Length": str(len(data))}
+            self._chunks = iter((data, b""))
+
+        def __enter__(self) -> TestDownloadAtomicity._BytesResponse:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def read(self, _size: int) -> bytes:
+            return next(self._chunks)
+
     def test_interrupted_download_leaves_no_file_at_final_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -72,6 +108,52 @@ class TestDownloadAtomicity:
             dogs.download("https://example.com/x.zip", dest)
 
         assert not dest.exists()
+        assert not dest.with_name(dest.name + ".part").exists()
+
+    def test_sample_checksum_mismatch_fails_before_final_rename(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(dogs, "EXPECTED_ZIP_BYTES", 4)
+        monkeypatch.setattr(
+            dogs,
+            "EXPECTED_ZIP_SHA256",
+            hashlib.sha256(b"good").hexdigest(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            urllib.request,
+            "urlopen",
+            lambda _url: self._BytesResponse(b"evil"),
+        )
+        dest = tmp_path / "sample.zip"
+
+        with pytest.raises(ValueError, match="SHA-256"):
+            dogs.download(dogs.SAMPLE_URL, dest)
+
+        assert not dest.exists()
+        assert not dest.with_name(dest.name + ".part").exists()
+
+    def test_sample_with_expected_checksum_is_published_atomically(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        data = b"good"
+        monkeypatch.setattr(dogs, "EXPECTED_ZIP_BYTES", len(data))
+        monkeypatch.setattr(
+            dogs,
+            "EXPECTED_ZIP_SHA256",
+            hashlib.sha256(data).hexdigest(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            urllib.request,
+            "urlopen",
+            lambda _url: self._BytesResponse(data),
+        )
+        dest = tmp_path / "sample.zip"
+
+        dogs.download(dogs.SAMPLE_URL, dest)
+
+        assert dest.read_bytes() == data
         assert not dest.with_name(dest.name + ".part").exists()
 
 

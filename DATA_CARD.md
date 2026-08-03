@@ -6,8 +6,8 @@
 
 | 項目 | 內容 |
 |---|---|
-| 來源 | Synthea 官方 sample data，`synthea_sample_data_fhir_r4_sep2019.zip`（~1,000 位合成病患，FHIR R4） |
-| 下載網址 | `https://synthetichealth.github.io/synthea-sample-data/downloads/synthea_sample_data_fhir_r4_sep2019.zip`（已驗證 HTTP 200，85,042,887 bytes；官方 `synthea.mitre.org` 網域會擋 bot，一律走 `github.io` 直連） |
+| 來源 | Synthea 官方 versioned sample data，`synthea_sample_data_fhir_r4_sep2019.zip`（~1,000 位合成病患，FHIR R4） |
+| 下載網址 | `https://synthetichealth.github.io/synthea-sample-data/downloads/synthea_sample_data_fhir_r4_sep2019.zip`（85,042,887 bytes；SHA-256 `a6fc595d9c0f4c646746af42f861b5a12d03c856af158dd837c764dfb81b66f8`，下載時 fail closed） |
 | 本地使用子集 | `scripts/download_or_generate_synthea.py --subset 100` 從 1,000 位中子集化出 100 位（`data/processed/subset_100/`），供開發與 eval 使用；亦支援 Java 17+ 時本地生成任意數量 |
 | 授權 | **Apache-2.0**（與 Synthea 專案本身一致，GitHub API 已確認） |
 | 引用 | Walonoski J, Kramer M, Nichols J, Quina A, Moesel C, Hall D, Duffett C, Dube K, Gallagher T, McLachlan S. *Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record.* Journal of the American Medical Informatics Association. 2018;25(3):230-238. https://doi.org/10.1093/jamia/ocx079（機器可讀版見 `CITATION.cff`） |
@@ -98,4 +98,5 @@ uv run python scripts/download_or_generate_synthea.py --generate --seed 20260728
 
 - 樣本量：本地開發與 eval 預設用 100 位病患子集，非完整 1,000 位；資料多樣性（罕見病、多重共病組合）不保證覆蓋真實臨床分布的長尾
 - sep2019 樣本版本較舊（pre-v3.4.0），部分欄位慣例與 Synthea 最新版不同（已於上表列出因應方式）
+- `--generate` 的可選本地生成路徑仍從 Synthea `releases/latest` 取得 JAR；它不參與 Docker demo build，也不作為 committed evaluation provenance
 - Synthea 的合成邏輯基於統計模型與公開臨床路徑規則，**不等同真實世界病患的病程真實性**，僅適合工程開發與展示用途，不可作為任何醫學研究或流行病學結論的資料來源

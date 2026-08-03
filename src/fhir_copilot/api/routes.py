@@ -19,6 +19,7 @@ from fhir_copilot.api.dependencies import (
     get_provider_name,
     get_store,
     guard_costly,
+    guard_patient_read,
     guard_protected,
 )
 from fhir_copilot.api.schemas import (
@@ -72,6 +73,8 @@ PricingDep = Annotated[dict[str, ModelPricing], Depends(get_pricing)]
 CallerDep = Annotated[str, Depends(guard_protected)]
 # 認證 + 限流 + 每日預算前置估算。只給真的會呼叫 LLM 的端點。
 CostlyCallerDep = Annotated[str, Depends(guard_costly)]
+# Patient-bearing GET 只在 REQUIRE_AUTH=true 時驗 API key,不新增限流。
+PatientReadCallerDep = Annotated[str, Depends(guard_patient_read)]
 
 
 @router.get("/health")
@@ -111,13 +114,17 @@ def health(store: StoreDep, provider: ProviderDep) -> HealthResponse:
 
 
 @router.get("/patients")
-def list_patients(store: StoreDep) -> PatientListResponse:
+def list_patients(caller: PatientReadCallerDep, store: StoreDep) -> PatientListResponse:
+    del caller
     return PatientListResponse(patients=store.list_patients())
 
 
 @router.get("/patients/{patient_id}/summary")
-def patient_summary(patient_id: str, store: StoreDep) -> PatientSummaryResponse:
+def patient_summary(
+    patient_id: str, caller: PatientReadCallerDep, store: StoreDep
+) -> PatientSummaryResponse:
     """時間軸用:直接呼叫 M2 工具組出來,不經過 LLM。"""
+    del caller
     demographics = get_patient_demographics(
         store, GetPatientDemographicsInput(patient_id=patient_id)
     )

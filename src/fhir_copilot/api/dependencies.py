@@ -207,6 +207,38 @@ def get_budget() -> DailyBudget:
     return DailyBudget(daily_limit_usd=get_ops().budget.daily_limit_usd, store=store)
 
 
+def _authenticate_request(request: Request) -> str:
+    """套用 API-key 規則並回傳 caller label,不包含限流。"""
+    ops = get_ops()
+    keys = load_api_keys()
+    presented = request.headers.get(ops.auth.header_name)
+
+    if not keys:
+        if require_auth():
+            logger.error("設定矛盾:要求認證但未設定任何 API key,所有受保護端點都會被擋下")
+            raise errors.missing_api_key(ops.auth.header_name)
+        return ANONYMOUS
+
+    matched = resolve_label(presented, keys)
+    if matched is not None:
+        return matched
+    if presented:
+        raise errors.invalid_api_key()
+    if require_auth():
+        raise errors.missing_api_key(ops.auth.header_name)
+    return ANONYMOUS
+
+
+def guard_patient_read(request: Request) -> str:
+    """只在 REQUIRE_AUTH=true 時保護 patient-bearing read routes。
+
+    Auth-off synthetic demo 保持完全公開,也不把原本沒有的限流加到唯讀端點。
+    """
+    if not require_auth():
+        return ANONYMOUS
+    return _authenticate_request(request)
+
+
 def guard_protected(request: Request) -> str:
     """認證 + 限流;回傳呼叫者 label(未啟用認證時是 ``anonymous``)。
 
@@ -225,24 +257,7 @@ def guard_protected(request: Request) -> str:
     而互相餓死彼此(見 ``identity.anonymous_bucket_key``)。
     """
     ops = get_ops()
-    keys = load_api_keys()
-    presented = request.headers.get(ops.auth.header_name)
-
-    if not keys:
-        if require_auth():
-            logger.error("設定矛盾:要求認證但未設定任何 API key,所有受保護端點都會被擋下")
-            raise errors.missing_api_key(ops.auth.header_name)
-        label = ANONYMOUS
-    else:
-        matched = resolve_label(presented, keys)
-        if matched is None:
-            if presented:
-                raise errors.invalid_api_key()
-            if require_auth():
-                raise errors.missing_api_key(ops.auth.header_name)
-            label = ANONYMOUS
-        else:
-            label = matched
+    label = _authenticate_request(request)
 
     # 桶 key 與對外標籤刻意分開:桶 key 在匿名時含 IP(只在記憶體內當 key),
     # 回傳的 label 永遠不含 IP——IP 是個人資料,不該流進日誌與 metrics。

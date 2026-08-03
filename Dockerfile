@@ -15,7 +15,7 @@ WORKDIR /app
 RUN chown user:user /app
 
 # 官方建議的 uv 安裝方式:直接從 uv 的 distroless image 複製執行檔
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /usr/local/bin/
 
 ENV HOME=/home/user \
     PYTHONUNBUFFERED=1 \
@@ -57,6 +57,10 @@ ENV FHIR_COPILOT_DATA_DIR=/app/data/processed/subset_100
 
 # HF Docker Space 預設對外埠是 7860(已查證)
 EXPOSE 7860
+
+# 不安裝 curl:runtime 已有 Python stdlib。health endpoint 保持免認證。
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/health', timeout=2).read()"
 
 # 同樣直接用 venv 裡的 uvicorn,不走 `uv run`:容器啟動時不該再嘗試解析依賴、
 # 不該需要網路,也不該把 dev 依賴補進來。環境已經由 uv sync --locked --no-dev 定死。

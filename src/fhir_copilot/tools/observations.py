@@ -2,7 +2,8 @@
 
 Observation 數值可能是 ``valueQuantity``、``valueCodeableConcept``、``valueString``,
 或以 ``component[]`` 呈現多值量測(如血壓的收縮壓/舒張壓)——四種都要處理。前三種 +
-component 已對真實 100 位病患資料(19,550 筆 Observation)完整驗證涵蓋所有出現過的
+component 已對實際下載的 100 位 Synthea 合成病患(19,550 筆 Observation)
+完整驗證涵蓋所有出現過的
 value[x] 形式(M2 審查,2026-07-19);``valueString`` 常見於 social-history 類別
 (如居住狀況、受虐狀況),對長照個案特別重要,漏接會讓已存在的事實被誤判成無資料。
 

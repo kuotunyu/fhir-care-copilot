@@ -209,7 +209,7 @@ Space 上傳集    docs/DEPLOY.md 有上傳,README 死連結 0 筆,front-matter 
 
 第二類還有幾種形狀:`PLAN.md §7 查證日期:2026-07-19`(日期要留)、
 `(PLAN.md §7 記錄的決策——文件穩定、範例齊全)`(理由要留)、
-`(已查證,PLAN.md §7,2026-07-24 用真實 100 位病患資料校正過)`(只拿掉中間那段)。
+`(已查證,PLAN.md §7,2026-07-24 用實際下載的 100 位 Synthea 合成病患校正過)`(只拿掉中間那段)。
 
 全域 sed 會把這些一起洗掉,而且**洗掉之後沒有人看得出來少了什麼**。
 
@@ -733,12 +733,9 @@ uv run pytest              (見下方)
 `list_active_conditions` / `list_active_medications` 都只回 active,那是對的
 ——已解決的診斷不是「目前的診斷」。
 
-**過敏不一樣。** `clinicalStatus: inactive` 的意思是「目前不認為有風險」,
-不是「這件事沒發生過」;`verificationStatus: refuted` 的意思是「查過、確認沒有」,
-那與「沒有紀錄」是兩件完全不同的事。
-
-在「不能給他什麼」上,**漏掉一筆與多給一筆的代價完全不對稱**。所以回傳全部,
-把 `clinical_status` 與 `verification_status` 一起交出去,讓呼叫端自己判斷。
+這個工具不替 `clinicalStatus: inactive` 或 `verificationStatus: refuted` 做臨床
+解讀。它們與「沒有紀錄」是不同的 FHIR status,所以回傳全部,
+把 `clinical_status` 與 `verification_status` 一起交出去,讓呼叫端呈現原值。
 evidence 也刻意指向 `clinicalStatus`——那正是**沒有被過濾掉的那一欄**。
 
 ### 三、這份合成資料展示不了它最重要的用途
@@ -859,7 +856,7 @@ Procedure 沒有工具,所以手術那題看起來安全。
 `History of appendectomy`——那正是漏掉的那一筆。**測試跑不到的資料,
 就要讓程式在用到那份資料的時候自己檢查。**
 
-驗證過它會失敗:把舊題目放回去,真實 100 位病患上抓出 9 個問題。
+驗證過它會失敗:把舊題目放回去,實際下載的 100 位 Synthea 合成病患上抓出 9 個問題。
 
 ### 四、這個檢查上線後立刻又抓到一題
 
@@ -2637,7 +2634,7 @@ uv run python scripts/publish_to_hf.py --repo-id kuotunyu/fhir-care-copilot --se
 **commit 後追加的最終確認(未產生新程式碼變更,純驗證)**
 - 新增 `.claude/launch.json`(給瀏覽器工具用的 dev server 啟動設定,`uv run uvicorn ... --port 8000`)
 - 試著用瀏覽器工具截圖給 README 補真實畫面,但這個 session 的 Browser pane 無法 compositing(`the Browser pane is not displayed`)——推測是離線自主執行沒有可顯示的視窗,不是應用程式的問題;改用 `read_page`/`get_page_text` 做功能性驗證
-- 對真實 100 位病患資料(`data/processed/subset_100`,非 fixture)完整重跑一次 M4 的 90 秒 demo 路徑:病患清單(100 位)正常呈現 → 選病患(Aaron697 Brekke496)→ 時間軸(5 個診斷、20 筆觀察值、2 個照護計畫皆正確顯示,含 SNOMED code)→ 在真實表單輸入「他最近的觀察值是什麼？」並送出 → 收到正確答案(10 筆觀察值,含血壓/血糖/肌酸酐等真實數值與時間戳記)→ cost badge 正確顯示(`mock-deterministic · 0 ms · 2→189 tok · US$0.00000`)→ 證據抽屜顯示 10 筆證據。全程透過真實瀏覽器互動,不是 API curl——這是 M0–M7 全部完成後,對整條 pipeline(store → tools → agent loop → API → 前端)的一次端到端回歸確認,沒有發現任何 regression
+- 對實際下載的 100 位 Synthea 合成病患(`data/processed/subset_100`,非 fixture)完整重跑一次 M4 的 90 秒 demo 路徑:病患清單(100 位)正常呈現 → 選病患(Aaron697 Brekke496)→ 時間軸(5 個診斷、20 筆觀察值、2 個照護計畫皆正確顯示,含 SNOMED code)→ 在瀏覽器表單輸入「他最近的觀察值是什麼？」並送出 → 收到正確答案(10 筆觀察值,含合成的血壓/血糖/肌酸酐數值與時間戳記)→ cost badge 正確顯示(`mock-deterministic · 0 ms · 2→189 tok · US$0.00000`)→ 證據抽屜顯示 10 筆證據。全程透過實際瀏覽器互動,不是 API curl——這是 M0–M7 全部完成後,對整條 pipeline(store → tools → agent loop → API → 前端)的一次端到端回歸確認,沒有發現任何 regression
 
 ---
 
@@ -2687,11 +2684,11 @@ avg / total cost (USD):  $0.00145 / $0.0436
 
 **做了什麼**
 - `src/fhir_copilot/eval/`:`cases.py`(自動產生 case,標準答案直接來自真實工具回傳值,不人工標註)、`metrics.py`(6 項指標判準)、`runner.py`(執行 + 兩層預算守門)
-- 題型配比(對真實 100 位病患資料實測後決定):medication/condition/observation/careplan 各 45 題(掃描全部 100 位病患,只挑該類別「確實有資料」的病患,決定性排序,不用隨機)、unanswerable 20 題(固定一批不存在的 patient_id)、injection 20 題(5 種使用者訊息注入攻擊 × 真實病患輪流配對)——共 220 題,超過 PLAN.md 要求的 ≥200
-- 6 項指標:tool-selection accuracy(從 evidence 的 resourceType 反推用了哪個工具,不用額外埋點)、field exact match、**citation validity**(直接對照真實 store 驗證每筆 evidence 的 resourceType/id 真的存在——這是最重要、也是唯一不含糊的指標)、unsupported-claim rate(啟發式:沒拒答+有實質內容+evidence 是空的)、refusal accuracy、injection resistance(答案不含攻擊訊息想誘導出的字串)、p50/p95 latency、平均成本
+- 題型配比(對實際下載的 100 位 Synthea 合成病患實測後決定):medication/condition/observation/careplan 各 45 題(掃描全部 100 位合成病患,只挑該類別「確實有資料」的病患,決定性排序,不用隨機)、unanswerable 20 題(固定一批不存在的 patient_id)、injection 20 題(5 種使用者訊息注入攻擊 × 合成病患輪流配對)——共 220 題,超過 PLAN.md 要求的 ≥200
+- 當時的 legacy 指標包含 tool-selection accuracy、field exact match、citation validity(只驗證 reference existence,且空 evidence 算成功)、unsupported-claim rate(實際只量沒拒答+有實質內容+evidence 為空)、refusal accuracy、injection resistance、p50/p95 latency、平均成本。後續已改名並拆出 reference integrity/evidence coverage,避免宣稱逐 claim grounding
 - 預算守門兩層:跑前用固定假設(2000 input + 300 output tokens/題)估算,超過直接 raise、不花錢;執行中累計每題真實花費,超過就提前停止(已完成的結果會保留,不是整個作廢)
 - `scripts/run_eval.py` CLI(`--provider`、`--full-eval`、`--sample-per-category`、`--budget-usd`、`--out`),輸出 `reports/eval_results.json`
-- CI 新增一步:對 `tests/data/fixtures`(2 位手工病患)跑一次真實 CLI(不是只測函式庫),確認 script 本身沒壞——不用真實 100 位病患資料(`data/` 未進 git)
+- CI 新增一步:對 `tests/data/fixtures`(2 位手工合成病患)跑一次實際 CLI(不是只測函式庫),確認 script 本身沒壞——不用下載 100 位 Synthea 樣本(`data/` 未進 git)
 - 26 個新測試(`test_eval_cases.py`/`test_eval_metrics.py`/`test_eval_runner.py`),含預算守門兩條路徑(跑前估算擋下 vs 執行中提前停止)各自的獨立測試
 
 **真實測試輸出**
@@ -2700,7 +2697,7 @@ uv run pytest          → 115 passed in 1.72s
 uv run mypy             → Success: no issues found in 57 source files
 uv run ruff check .     → All checks passed!
 
-# 對真實 100 位病患資料跑完整 220 題(mock provider)
+# 對實際下載的 100 位 Synthea 合成病患跑完整 220 題(mock provider)
 uv run python scripts/run_eval.py --provider mock --full-eval
 INFO 產生 220 題(full_eval=True,provider=mock)
 INFO 預估成本 $0.0000(共 220 題,預算上限 $5.00)
@@ -2735,8 +2732,8 @@ avg / total cost (USD):  $0.00000 / $0.0000
 - 先驗證 PLAN.md §10 風險表懸而未決的一項：node v24.16.0 + `npm create vite` + `npm install` + `npm run build` 在這個含中文與空格的路徑上全部正常，無需比照 Python 改路徑或搬 WSL2
 - FastAPI 後端（`src/fhir_copilot/api/`）：`dependencies.py`（store/provider/pricing/guardrails 的 `lru_cache` 單例；provider 選擇邏輯——`FHIR_COPILOT_PROVIDER` env var 優先，沒設用 configs 的 default，選到的 provider 缺金鑰時自動退回 mock demo mode）；6 個 endpoint(`/api/health`、`/api/patients`、`/api/patients/{id}/summary`、`/api/chat`、`/api/care-notes/propose`、`/api/care-notes/confirm`、`/api/providers`）；`app.py` 用 `StaticFiles(html=True)` 掛 `app/dist`，同一個 process 同一個 port serve 前端與 API
 - React + Vite + TypeScript 工作台（`app/`）：病患選擇器(搜尋)、病歷時間軸(診斷/用藥/觀察值/照護計畫 4 個分頁)、個案問答(含證據抽屜、cost/latency badge、拒答狀態、Enter 送出/Shift+Enter 換行)。設計語彙「溫暖病歷夾」:奶油紙色背景 + 深松石綠主色 + 赤陶橘互動強調色,紅色只保留給拒答/錯誤;Fraunces 襯線標題 + Work Sans 內文 + JetBrains Mono 數字;支援亮/暗色主題
-- 用 Claude Browser 對**真實跑起來的 server**(不只 TestClient)做端到端驗證:vite dev(5173,proxy 到本機 8000)與 FastAPI 直接 serve production build(8000 單一 process)兩種模式都測過;100 位真實病患資料全部正確渲染;點選病患→切換時間軸分頁→送出聊天問題→看到證據抽屜(5 筆 Condition evidence)與 cost badge→切換病患後對話重置,全部手動走過一輪;縮到手機寬度(375px)確認無橫向溢位;全程 0 個 console error
-- `tests/test_api.py`(9 個 FastAPI 路由整合測試,用 fixture 資料 + mock provider,不碰真實 100 位病患資料集)
+- 用瀏覽器對**實際跑起來的 server**(不只 TestClient)做端到端驗證:vite dev(5173,proxy 到本機 8000)與 FastAPI 直接 serve production build(8000 單一 process)兩種模式都測過;100 位 Synthea 合成病患資料全部正確渲染;點選病患→切換時間軸分頁→送出聊天問題→看到證據抽屜(5 筆 Condition evidence)與 cost badge→切換病患後對話重置,全部手動走過一輪;縮到手機寬度(375px)確認無橫向溢位;全程 0 個 console error
+- `tests/test_api.py`(9 個 FastAPI 路由整合測試,用 fixture 資料 + mock provider,不碰下載的 100 位 Synthea 樣本)
 
 **真實測試輸出**
 ```
@@ -2753,7 +2750,7 @@ GET /api/health         → {"status":"ok","provider":"mock","model_id":"mock-de
                             "demo_mode":true,"patient_count":100}
 GET /                   → 200,回傳 app/dist/index.html(FastAPI 直接 serve production build)
 
-# 瀏覽器實測(vite dev,對真實 100 位病患資料):
+# 瀏覽器實測(vite dev,對實際下載的 100 位 Synthea 合成病患):
 問「他目前有哪些生效中的診斷?」(病患 Aaron697 Brekke496)
 → 答:「目前生效中的診斷:Cardiac Arrest、History of cardiac arrest (situation)、
    Body mass index 30+ - obesity...」
@@ -2786,7 +2783,7 @@ GET /                   → 200,回傳 app/dist/index.html(FastAPI 直接 serve 
 - 下載腳本 4 個穩健性 bug（都是真實會發生的情境，非假設）：`download()` 中斷後留下看似完整的半成品檔案 → 改成下載到 `.part` 暫存檔、成功才原子性 rename；`extract()` 只看「有沒有任一檔案」判斷已完成 → 改成比對 zip 內實際 `.json` 數；`make_subset()` 只比數量、不比檔名 → 換來源（下載↔生成）但數量剛好一樣時會誤判成最新 → 改成比對實際檔名集合；`java_major_version()` 誤判 Java 8 舊制版號 `"1.8.0_281"` 為主版號 1（不影響拒絕判斷，但診斷訊息誤導）→ 修正
 - 新增 `tests/test_download_script.py`（12 個測試，純邏輯、不碰真實網路）
 
-*M2 收尾（工具層 16-agent 審查修正，含對真實 100 位病患跑全部 5 個工具）*
+*M2 收尾（工具層審查修正，含對實際下載的 100 位 Synthea 合成病患跑全部 5 個工具）*
 - `_value_display()` 沒處理 `valueString`（social-history 類別常見，如居住/受虐狀況）→ 靜默回傳 `None`，跟「真的沒資料」無法區分——對長照個案是會漏掉「居無定所」這種事實的安全性問題（4 個審查視角獨立發現，1 個評 HIGH）→ 補上 `valueString` 分支
 - `effectiveDateTime`/`period.start` 直接比字串排序，真實資料混用 `-04:00`/`-05:00`（跨年份的日光節約時間）時字串排序會跟實際時間相反（目前樣本剛好沒觸發過，但邏輯上證實是錯的）→ 改用 `fhir_utils.datetime_sort_key()` 比較真正的 datetime
 - `list_active_medications` 透過 `medicationReference` 解析出的藥名，evidence 只引用了 `MedicationRequest`（只證明 status=active，證不到藥名本身）→ 補一筆指向實際 `Medication` resource 的 evidence

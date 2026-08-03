@@ -7,11 +7,15 @@
 | 項目 | 內容 |
 |---|---|
 | 系統類型 | 工具受控（tool-controlled）read-only agent，非端對端生成式問答 |
-| 支援的底層 LLM | `gemini-3.1-flash-lite`（Google，預設）、`gpt-5.4-mini`（OpenAI）、`mock-deterministic`（CI/demo，不呼叫外部 API） |
+| 支援的底層 LLM | `gemini-3.1-flash-lite`（Google）、`gpt-5.4-mini`（OpenAI）、`mock-deterministic`（部署／CI 預設，不呼叫外部 API） |
 | 模型 id / 單價來源 | `configs/models.yaml`、`configs/pricing.yaml`（不寫死在程式，換模型只改設定檔） |
 | Agent loop 護欄 | `configs/guardrails.yaml`：`max_tool_rounds=6`、`timeout_seconds=30`、`max_input_chars=4000`、`max_output_tokens=1024`、`require_tool_call_before_answer=true`。五項都會實際生效——`max_output_tokens` 在 2026-07-26 之前只被載入、沒有傳給任何 provider，已修 |
 | 工具清單 | 6 個唯讀資料工具（demographics / conditions / medications / observations / care plan timeline / allergies），皆回傳 `evidence[]`（FHIR `resourceType`/`id`）；外加 `report_out_of_scope`，**不查任何資料**，用途是讓模型明講「現有工具涵蓋不到這題」 |
-| 寫入路徑 | `propose_care_note` 僅產草稿，**不在 agent loop 工具清單內**；需 UI 明確人工確認才寫本地 audit log JSONL，**永不寫回 FHIR** |
+| 寫入路徑 | Backend `propose_care_note` 僅產簽章草稿，**不在 agent loop 工具清單內**；`confirm` API 驗簽後才寫 audit，**永不寫回 FHIR**。React confirmation UI 尚未實作 |
+
+API key 提供 caller authentication，但目前沒有 patient entitlement、RBAC、tenant isolation
+或 SMART-on-FHIR。Server-injected patient scope 防止模型改寫 scope，不代表使用者已獲得該
+patient 的授權。
 
 ## 這套系統「不是」什麼
 

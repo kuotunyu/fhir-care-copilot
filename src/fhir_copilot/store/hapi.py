@@ -16,13 +16,13 @@ class HapiFHIRStore:
         self.base_url = base_url.rstrip("/")
 
     def list_patients(self) -> list[PatientSummary]:
-        raise NotImplementedError("HAPI adapter 預留於後續 milestone 實作")
+        raise NotImplementedError("HAPI adapter 未實作;目前只支援 local Synthea store")
 
     def get_patient(self, patient_id: str) -> JsonDict:
-        raise NotImplementedError("HAPI adapter 預留於後續 milestone 實作")
+        raise NotImplementedError("HAPI adapter 未實作;目前只支援 local Synthea store")
 
     def get_resources(self, patient_id: str, resource_type: str) -> list[JsonDict]:
-        raise NotImplementedError("HAPI adapter 預留於後續 milestone 實作")
+        raise NotImplementedError("HAPI adapter 未實作;目前只支援 local Synthea store")
 
     def resolve_reference(self, patient_id: str, reference: str) -> JsonDict | None:
-        raise NotImplementedError("HAPI adapter 預留於後續 milestone 實作")
+        raise NotImplementedError("HAPI adapter 未實作;目前只支援 local Synthea store")

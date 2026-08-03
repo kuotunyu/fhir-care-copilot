@@ -180,8 +180,11 @@ jobs:
         run: |
           docker run -d --name copilot-ci -p 7860:7860 fhir-care-copilot:ci
           for _ in $(seq 1 60); do
-            curl -sf http://localhost:7860/api/health > /dev/null && break
+            status=$(docker inspect --format '{{.State.Health.Status}}' copilot-ci)
+            [ "$status" = "healthy" ] && break
+            [ "$status" = "unhealthy" ] && docker logs copilot-ci && exit 1
             sleep 2
           done
+          test "$(docker inspect --format '{{.State.Health.Status}}' copilot-ci)" = "healthy"
           curl -sf http://localhost:7860/api/health | tee /dev/stderr | grep -q '"demo_mode":true'
           docker rm -f copilot-ci

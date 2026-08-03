@@ -4,6 +4,17 @@ FHIR Care Copilot 是使用 Synthea 合成資料的非臨床工程展示，不�
 production healthcare system。以下矩陣描述應用程式本身的 persistence/retention 邊界；
 專案不內建 retention scheduler 或自動刪除服務。
 
+## Authentication and patient scope
+
+- `REQUIRE_AUTH=true` 時，chat、care-note 與 patient-bearing GET routes 要求 API key；
+  health 永遠公開，provider metadata 也保持公開。
+- API key 只提供 caller authentication。目前沒有 patient entitlement、RBAC、tenant
+  isolation 或 SMART-on-FHIR，因此不是 patient-level authorization。
+- Patient ID 由 client 選擇；agent loop 再以 server value 注入 tool call。這能防止模型
+  自行指定或跨越 patient scope，但不能替代 user-to-patient authorization。
+- Public demo 的資料政策是 Synthea-only；程式可設定其他 FHIR data directory，所以這是
+  repository／deployment policy，不是自動辨識或阻擋真實資料的 architecture guarantee。
+
 ## Log, trace and audit retention matrix
 
 | 儲存面 | 應用程式是否持久化 | Demo 預設 | 保留／刪除責任 |

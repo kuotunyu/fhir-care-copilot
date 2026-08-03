@@ -20,7 +20,7 @@ FHIR Care Copilot 是作品級展示專案：以 LLM agent 查詢長照個案的
 ### 2. 預設唯讀（read-only default）
 
 - Agent loop 的工具 allowlist 中**不存在任何 write 類工具**——不是「擋下來」，是「根本不註冊」
-- 唯一的寫入路徑：`propose_care_note` 產生草稿 → **UI 明確人工確認** → 寫入本地 audit log（JSONL）
+- 唯一的寫入路徑：Backend `propose_care_note` 產生簽章草稿 → client 明確呼叫 `confirm` → 寫入 audit log；React confirmation UI 尚未實作
 - audit log 永不寫回 FHIR store；FHIRStore interface 刻意不提供 write 方法
 
 ### 3. LLM 與資料的隔離
@@ -42,7 +42,7 @@ FHIR Care Copilot 是作品級展示專案：以 LLM agent 查詢長照個案的
 
 | 動作 | 確認方式 |
 |---|---|
-| care note 草稿 → audit log | UI 明確按鈕確認，預設不儲存 |
+| care note 草稿 → audit log | Backend confirm API 驗證簽章後才儲存；React confirmation UI 尚未實作 |
 | 發布到 Hugging Face | `scripts/publish_to_hf.py` 預設 dry-run，需明確 flag 才真的上傳 |
 | 超過 eval 預算（預設 $5） | 跑前估算 + 途中累計，超過即停，需人工調高上限才續跑 |
 

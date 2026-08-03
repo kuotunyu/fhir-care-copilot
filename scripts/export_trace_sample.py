@@ -41,7 +41,7 @@ QUESTION = "他目前有在吃什麼藥?"
 
 
 def pick_data_dir() -> Path:
-    """有真實的 100 位病患資料就用它,否則退回 committed fixtures。
+    """有實際下載的 100 位 Synthea 合成病患就用它,否則退回 committed fixtures。
 
     fixtures 也能產出結構完全相同的 trace,所以沒有 data/ 的人一樣跑得出來。
     """
