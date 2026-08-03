@@ -10,6 +10,7 @@ PUBLIC_CLAIM_FILES = (
     "MODEL_CARD.md",
     "DATA_CARD.md",
     "docs/EVAL.md",
+    "docs/CASE_STUDY.md",
     "reports/model_comparison.md",
     "reports/model_comparison_full.md",
 )
@@ -39,3 +40,19 @@ def test_readme_defines_reference_integrity_without_claim_grounding() -> None:
     assert "reference integrity" in text.lower()
     assert "不代表" in text
     assert "逐句" in text
+
+
+def test_case_study_has_required_boundaries_and_evidence_links() -> None:
+    text = (REPO_ROOT / "docs/CASE_STUDY.md").read_text(encoding="utf-8")
+    required = (
+        "Synthea",
+        "合成資料",
+        "非臨床",
+        "server-injected patient scope",
+        "reference integrity",
+        "不代表自然語言回答已逐句 grounded",
+        "MODEL_CARD.md",
+        "model_comparison_full.md",
+        "0003-patient-scope-injection.md",
+    )
+    assert all(value in text for value in required)

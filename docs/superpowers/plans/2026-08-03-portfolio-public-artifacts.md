@@ -196,7 +196,6 @@ git -c user.name=kuotunyu -c user.email=61350295+kuotunyu@users.noreply.github.c
 **Files:**
 - Create: `docs/CASE_STUDY.md`
 - Modify: `tests/test_public_claims.py:8-16`
-- Modify: `tests/test_release_metadata.py`
 
 **Interfaces:**
 - Consumes: `README.md`, `MODEL_CARD.md`, `DATA_CARD.md`, ADR 0003, committed evaluation/load/failure reports, and GitHub Actions run `30792959630` attempt 2.
