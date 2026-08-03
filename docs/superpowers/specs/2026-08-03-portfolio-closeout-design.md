@@ -64,6 +64,7 @@ The closeout addresses these public-surface gaps:
 
 1. `pyproject.toml`
    - Change application version from `0.1.0` to `0.2.0`.
+   - Refresh only the root-package version recorded in `uv.lock`; do not change dependencies.
 
 2. `CITATION.cff`
    - Add/update `version: 0.2.0` and `date-released: 2026-08-03`.
@@ -87,9 +88,15 @@ The closeout addresses these public-surface gaps:
    - Include: project name, “Security-focused FHIR AI application”, synthetic-data boundary, and
      FastAPI / React / FHIR / Docker identifiers.
 
-6. `docs/superpowers/specs/2026-08-03-portfolio-closeout-design.md`
-   - Retain this approved closeout specification as release-process provenance.
-   - Exclude it from the Hugging Face publish allowlist and recruiter-facing top-level navigation.
+6. `docs/superpowers/specs/2026-08-03-portfolio-closeout-design.md` and
+   `docs/superpowers/plans/2026-08-03-*.md`
+   - Retain the approved closeout specification and execution plans as release-process provenance.
+   - Exclude them from the Hugging Face publish set and recruiter-facing top-level navigation.
+
+7. `scripts/publish_to_hf.py` and release-boundary tests
+   - Exclude `docs/superpowers/` from the Space upload set without changing application behavior.
+   - Add the minimum tests needed to pin version, public-claim, image, README-link, and Space-upload
+     consistency for the closeout artifacts.
 
 No MP4, private interview material, generated patient data, raw screen recording, or editor source
 will be committed to Git.
