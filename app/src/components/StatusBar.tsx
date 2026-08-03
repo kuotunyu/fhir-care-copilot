@@ -105,7 +105,7 @@ export function StatusBar({ health, onApiKeyChange }: Props) {
             </summary>
             <form className="api-key__form" onSubmit={save}>
               <label className="api-key__label" htmlFor="api-key-input">
-                貼上你的 API key。它只存在這個瀏覽器,不會送到後端以外的地方。
+                API key 只保留在目前頁面的記憶體,並隨 API 請求傳給此服務;重新整理或關閉頁面後會清除。
               </label>
               <div className="api-key__row">
                 <input

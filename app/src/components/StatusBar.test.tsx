@@ -78,6 +78,14 @@ describe('StatusBar 的降級揭露', () => {
 })
 
 describe('StatusBar 的 API key 控制項', () => {
+  it('揭露金鑰只在頁面記憶體中,會隨請求傳送並在頁面結束後清除', () => {
+    render(<StatusBar health={health({ auth_required: true })} onApiKeyChange={vi.fn()} />)
+
+    expect(screen.getByText(/目前頁面的記憶體/)).toBeTruthy()
+    expect(screen.getByText(/隨 API 請求傳給此服務/)).toBeTruthy()
+    expect(screen.getByText(/重新整理或關閉頁面後會清除/)).toBeTruthy()
+  })
+
   it('伺服器沒設任何金鑰也不要求認證時不顯示——那只是雜訊', () => {
     render(
       <StatusBar

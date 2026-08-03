@@ -38,31 +38,27 @@ class ApiError extends Error {
 }
 
 /**
- * API key 存在 localStorage,由使用者在介面上貼入。
+ * API key 只保留在目前頁面的記憶體中。
  *
- * 為什麼不是 build-time env:那會把金鑰烤進公開的 JS bundle,任何人打開
- * devtools 都讀得到——對一個以安全紀律為賣點的專案是自相矛盾的。
- * 放 localStorage 沒有比較「安全」(同源指令碼一樣讀得到),但它誠實:
- * 金鑰是這個瀏覽器的使用者自己提供的,不是我們發佈出去的。
+ * 不使用 localStorage/sessionStorage/cookie,避免金鑰在頁面生命週期外留存。
+ * 模組初始化時 best-effort 移除舊版殘留的 localStorage 項目;儲存空間不可用
+ * 時也不影響目前頁面的金鑰使用。
  */
-const API_KEY_STORAGE_KEY = 'fhir-copilot.api-key'
+const LEGACY_API_KEY_STORAGE_KEY = 'fhir-copilot.api-key'
+let apiKey = ''
+
+try {
+  localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY)
+} catch {
+  // localStorage 不可用時仍可使用目前頁面的記憶體金鑰。
+}
 
 export function getApiKey(): string {
-  try {
-    return localStorage.getItem(API_KEY_STORAGE_KEY) ?? ''
-  } catch {
-    // 隱私模式等情境下 localStorage 可能不可用——沒有 key 就當作沒設
-    return ''
-  }
+  return apiKey
 }
 
 export function setApiKey(key: string): void {
-  try {
-    if (key) localStorage.setItem(API_KEY_STORAGE_KEY, key)
-    else localStorage.removeItem(API_KEY_STORAGE_KEY)
-  } catch {
-    // 存不進去不該讓操作失敗;這一頁的 request 仍會帶上剛輸入的值
-  }
+  apiKey = key
 }
 
 /** API key header 的名稱,要與 configs/ops.yaml 的 auth.header_name 一致。 */

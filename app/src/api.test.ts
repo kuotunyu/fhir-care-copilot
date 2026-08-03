@@ -22,13 +22,22 @@ function mockFetchOnce(init: {
 }
 
 afterEach(() => {
+  setApiKey('')
+  window.localStorage.clear()
+  window.sessionStorage.clear()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.resetModules()
 })
 
-describe('API key 的儲存', () => {
-  it('存進去讀得回來', () => {
+describe('API key 的頁面生命週期', () => {
+  it('只保留在目前頁面的記憶體,不寫入 Web Storage', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
     setApiKey('demo-key')
+
     expect(getApiKey()).toBe('demo-key')
+    expect(setItem).not.toHaveBeenCalled()
   })
 
   it('存空字串等於清除', () => {
@@ -37,8 +46,28 @@ describe('API key 的儲存', () => {
     expect(getApiKey()).toBe('')
   })
 
-  it('localStorage 不可用時回空字串而不是丟例外', () => {
-    // 隱私模式下 localStorage 存取會 throw。整個介面不該因此掛掉。
+  it('重新載入模組後不保留金鑰', async () => {
+    setApiKey('page-only-secret')
+    vi.resetModules()
+
+    const freshApi = await import('./api')
+
+    expect(freshApi.getApiKey()).toBe('')
+  })
+
+  it('不讀取舊的 localStorage key,但會嘗試移除它', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem')
+    vi.resetModules()
+
+    const freshApi = await import('./api')
+
+    expect(freshApi.getApiKey()).toBe('')
+    expect(getItem).not.toHaveBeenCalled()
+    expect(removeItem).toHaveBeenCalledWith('fhir-copilot.api-key')
+  })
+
+  it('localStorage 不可用時仍能使用頁面記憶體', async () => {
     const original = Object.getOwnPropertyDescriptor(window, 'localStorage')
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
@@ -47,8 +76,11 @@ describe('API key 的儲存', () => {
       },
     })
     try {
-      expect(getApiKey()).toBe('')
-      expect(() => setApiKey('x')).not.toThrow()
+      vi.resetModules()
+      const freshApi = await import('./api')
+      expect(freshApi.getApiKey()).toBe('')
+      expect(() => freshApi.setApiKey('page-only')).not.toThrow()
+      expect(freshApi.getApiKey()).toBe('page-only')
     } finally {
       if (original) Object.defineProperty(window, 'localStorage', original)
     }
