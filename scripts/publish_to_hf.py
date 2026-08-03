@@ -498,7 +498,10 @@ def _execute_publish(
 
     logger.info("完成。Space 網址:https://huggingface.co/spaces/%s", repo_id)
     logger.info("健康檢查:https://%s.hf.space/api/health", repo_id.replace("/", "-"))
-    logger.info("**部署後務必確認 provider 不是 mock**——沒拿到金鑰時它會安靜退回去。")
+    logger.info(
+        "公開 demo 驗證:等待 Space running 後檢查 /api/health,必須回傳 "
+        "provider=mock、model_id=mock-deterministic、demo_mode=true。"
+    )
     return 0
 
 

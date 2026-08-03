@@ -60,9 +60,9 @@ Prompt injection 另有多次重跑 artifact；單次百分比並不穩定，且
 |---|---|---|
 | 未認證或高頻呼叫 | 可選 API key auth、per-caller rate limit、每日 budget | 啟用 auth 時無效 key 回 401；超速或超預算回 429。Auth 不等於 patient-level authorization（[tests](../tests/test_auth.py)、[rate limit](../tests/test_rate_limit.py)、[budget](../tests/test_budget.py)）。 |
 | Logs/traces 洩漏資料 | `patient_id` 使用 process-local keyed HMAC pseudonym；自由文字只記形狀、姓名不記錄，並清洗 request id | 這是 PII-safe logs/traces 的應用層邊界；collector 的 retention 仍由部署者管理（[test](../tests/test_pii_redaction.py)、[SECURITY](../SECURITY.md)）。 |
-| Provider timeout、429 或持續失敗 | SDK-level timeout、指數 retry、circuit breaker；重試成本計入 budget | 熔斷時停止呼叫 provider 並回結構化拒答；它保護服務資源，不證明回答品質（[test](../tests/test_resilience.py)）。 |
-| Audit backend 不可用 | 未設定 `DATABASE_URL` 時使用 append-only JSONL；設定 Postgres 但資料庫不可達時標記 audit unavailable | `/api/health` 回 `degraded`，唯讀端點維持；`/api/chat` 以 503 fail closed。JSONL 沒有 container audit volume，Postgres/collector retention 也不是應用自動處理。 |
-| 容器或依賴狀態不明 | Docker image 內建 `/api/health` healthcheck；CI 執行 image build 與 container smoke | Health 回應揭露 demo/provider/audit 狀態；健康檢查與 CI 測試都只是工程運作證據，不是臨床驗證。 |
+| Provider timeout、429 或持續失敗 | SDK-level timeout、指數 retry、circuit breaker；重試成本計入 budget | 熔斷時停止呼叫 provider 並回結構化拒答；它保護服務資源，不證明回答品質（[test](../tests/test_resilience.py)、[README 降級行為](../README.md#降級行為)）。 |
+| Audit backend 不可用 | 未設定 `DATABASE_URL` 時使用 append-only JSONL；設定 Postgres 但資料庫不可達時標記 audit unavailable | `/api/health` 回 `degraded`，唯讀端點維持；`/api/chat` 以 503 fail closed。JSONL 沒有 container audit volume，Postgres/collector retention 也不是應用自動處理（[README 降級行為](../README.md#降級行為)）。 |
+| 容器或依賴狀態不明 | Docker image 內建 `/api/health` healthcheck；CI 執行 image build 與 container smoke | Health 回應揭露 demo/provider/audit 狀態；健康檢查與 CI 測試都只是工程運作證據，不是臨床驗證（[GitHub Actions run 30792959630, attempt 2](https://github.com/kuotunyu/fhir-care-copilot/actions/runs/30792959630/attempts/2)）。 |
 
 ## 為什麼保持 modular monolith
 

@@ -1,7 +1,7 @@
 # FHIR Care Copilot Portfolio Closeout Design
 
 Date: 2026-08-03
-Status: proposed for user review
+Status: approved
 Target release: `v0.2.0`
 
 ## 1. Objective
@@ -73,7 +73,11 @@ The closeout addresses these public-surface gaps:
 3. `README.md`
    - Add a CI badge linked to the current GitHub Actions workflow.
    - Add the release badge/link and a compact link to the case study and demo video.
-   - Keep the existing architecture, limitations, screenshots, and evidence language intact.
+   - Keep the existing architecture, limitations, and screenshots intact.
+   - Replace absolute grounding implications with precise semantics: patient-data retrieval goes
+     only through allowlisted deterministic tools; tool results include FHIR `resourceType/id`
+     references; reference existence does not mean the natural-language answer is grounded
+     sentence by sentence.
    - Do not add new production or clinical claims.
 
 4. `docs/CASE_STUDY.md`
@@ -178,18 +182,18 @@ FHIR references and explicitly state that this is not natural-language claim gro
 
 ## 7. Implementation and publication sequence
 
-1. Create public text and visual artifacts on `codex/portfolio-v0.2.0-closeout`.
-2. Generate the private kit and demo video outside the repository.
-3. Run public-claim/link checks, formatting/static checks, full CPU/mock backend and frontend suites,
-   clean-install verification, and local Docker smoke where relevant.
-4. Commit the release closeout as `kuotunyu` with no co-author trailer.
-5. Fast-forward `main` only after confirming `origin/main` has not diverged.
-6. Push normally and wait for all GitHub Actions jobs to pass.
-7. Create annotated tag `v0.2.0` and GitHub Release; upload the MP4 release asset.
-8. Update GitHub description, topics, homepage, and social preview.
-9. Publish the final release snapshot to Hugging Face, switch the public provider to mock, and wait
-   for the Space to become running/healthy.
-10. Run public health/API smoke without paid calls and verify all public links.
+**Approved human mock-first ruling (2026-08-03):** execute the publication plan in the mandatory
+order `Task 1 → Task 5 → Task 2 → Task 3 → Task 4 → Task 6`. Task 5 must deploy and publicly smoke
+the exact clean candidate on Hugging Face with `provider=mock`, `model_id=mock-deterministic`, and
+`demo_mode=true` before any fast-forward or push of GitHub `main` in Task 2.
+
+1. Task 1 records the immutable clean candidate and completes the no-mutation preflight.
+2. Task 5 stages, locally smokes, deploys, and publicly verifies that exact candidate in forced
+   mock mode.
+3. Task 2 may then fast-forward and push `main`, followed by the exact GitHub Actions gate.
+4. Task 3 creates the annotated tag and Release only after CI succeeds.
+5. Task 4 aligns repository metadata and the social preview.
+6. Task 6 performs the final cross-surface consistency and cleanup audit.
 
 Any divergence, CI failure, failed checksum, failed HF build, authentication uncertainty, or
 unexpected public artifact stops publication. No force push or opportunistic product fix is

@@ -180,6 +180,20 @@ class TestPublishOrdering:
         assert calls.index("list_repo_files") < calls.index("upload_folder")
         assert _RecordingHfApi.delete_patterns == ["PLAN.md"]
 
+    def test_execute_completion_guides_public_mock_verification(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Public closeout must verify the intentional mock runtime after upload."""
+        caplog.set_level("INFO")
+
+        exit_code = pub.main(["--repo-id", "someone/space", "--execute"])
+
+        assert exit_code == 0
+        assert "provider=mock" in caplog.text
+        assert "model_id=mock-deterministic" in caplog.text
+        assert "demo_mode=true" in caplog.text
+        assert "provider 不是 mock" not in caplog.text
+
 
 class TestFrontMatterValidation:
     """2026-07-26 真實發布時踩到的:``colorFrom: teal`` / ``colorTo: orange``

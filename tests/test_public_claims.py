@@ -30,6 +30,7 @@ def test_public_evidence_claims_stay_within_measured_semantics(relative_path: st
         "對真實 100 位病患資料",
         "對真實 1,000 位病患樣本",
         "這是架構層的保證",
+        "每個病患事實都由 deterministic tool 回傳並附",
     )
     found = [claim for claim in overclaims if claim in text]
     assert not found, f"{relative_path} 含過強或易誤解的公開 claim: {found}"
@@ -37,9 +38,10 @@ def test_public_evidence_claims_stay_within_measured_semantics(relative_path: st
 
 def test_readme_defines_reference_integrity_without_claim_grounding() -> None:
     text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "病患資料檢索只會經由 allowlisted deterministic tools" in text
+    assert "tool 結果包含 FHIR `resourceType/id` references" in text
+    assert "`reference existence` 不代表自然語言答案逐句 grounded" in text
     assert "reference integrity" in text.lower()
-    assert "不代表" in text
-    assert "逐句" in text
 
 
 def test_case_study_has_required_boundaries_and_evidence_links() -> None:

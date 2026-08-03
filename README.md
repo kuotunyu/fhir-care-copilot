@@ -7,8 +7,8 @@
 > 所有病患資料皆為 [Synthea](https://github.com/synthetichealth/synthea) 產生的**合成資料**，不含任何真實個資。
 
 以 Synthea 公開合成病患 FHIR R4 資料為基礎的**長照個案查詢 copilot**：可追溯、工具受控、預設唯讀。
-LLM 不直接接觸資料庫、不憑記憶回答病患事實——每個病患事實都由 deterministic tool 回傳並附
-FHIR `resourceType/id` 證據；資料不足時明確拒答。
+病患資料檢索只會經由 allowlisted deterministic tools；tool 結果包含 FHIR `resourceType/id` references。
+`reference existence` 不代表自然語言答案逐句 grounded；資料不足時明確拒答。
 
 **線上 demo**：https://huggingface.co/spaces/steven0226/fhir-care-copilot
 

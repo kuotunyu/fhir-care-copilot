@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Target release is exactly `v0.2.0`, with package/CITATION version `0.2.0` and release date `2026-08-03`.
+- Target release is exactly `v0.2.0`, with packaging/runtime/CITATION version `0.2.0` and release date `2026-08-03`.
 - No product feature, application behavior, UI, architecture, dependency, model configuration, or evaluation result changes.
 - All patient examples are Synthea synthetic data and must never be described as real medical records.
 - This is a non-clinical technical demonstration; passing tests must never be described as clinical readiness.
@@ -26,7 +26,9 @@
 - Modify `pyproject.toml`: canonical Python package version.
 - Modify `uv.lock`: root editable-package version only; dependencies remain unchanged.
 - Modify `CITATION.cff`: release version and date.
-- Create `tests/test_release_metadata.py`: closeout-only metadata, README, and PNG assertions.
+- Modify `src/fhir_copilot/__init__.py`: exported runtime version.
+- Modify `tests/test_smoke.py`: runtime version smoke assertion.
+- Create `tests/test_release_metadata.py`: canonical packaging/runtime/CITATION contract plus README and PNG assertions.
 - Modify `scripts/publish_to_hf.py`: exclude internal closeout provenance from the public Space.
 - Modify `tests/test_publish_to_hf.py`: prove the excluded provenance is absent from the upload set.
 - Modify `tests/test_public_claims.py`: include the new public case study in claim-semantic checks.
@@ -41,10 +43,13 @@
 - Modify: `pyproject.toml:1-8`
 - Modify: `uv.lock` root `fhir-copilot` package entry
 - Modify: `CITATION.cff:1-12`
+- Modify: `src/fhir_copilot/__init__.py`
+- Modify: `tests/test_smoke.py`
 
 **Interfaces:**
 - Consumes: approved target version `0.2.0` and release date `2026-08-03`.
-- Produces: one canonical version/date contract used by packaging, citation, CI, and release creation.
+- Produces: one canonical version/date contract used by packaging, the exported runtime version,
+  citation, CI, and release creation.
 
 - [ ] **Step 1: Write the failing metadata test**
 
@@ -58,6 +63,8 @@ from pathlib import Path
 
 import yaml
 
+from fhir_copilot import __version__ as runtime_version
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RELEASE_VERSION = "0.2.0"
 RELEASE_DATE = "2026-08-03"
@@ -68,6 +75,7 @@ def test_package_and_citation_release_metadata_match() -> None:
     citation = yaml.safe_load((REPO_ROOT / "CITATION.cff").read_text(encoding="utf-8"))
 
     assert pyproject["project"]["version"] == RELEASE_VERSION
+    assert runtime_version == RELEASE_VERSION
     assert citation["version"] == RELEASE_VERSION
     assert str(citation["date-released"]) == RELEASE_DATE
 ```
@@ -90,6 +98,13 @@ Change only these values:
 # pyproject.toml
 version = "0.2.0"
 ```
+
+```python
+# src/fhir_copilot/__init__.py
+__version__ = "0.2.0"
+```
+
+Update `tests/test_smoke.py` to assert the exported runtime version is `0.2.0`.
 
 ```yaml
 # CITATION.cff, after `type: software`
@@ -117,7 +132,7 @@ Run:
 ```powershell
 uv lock --check
 uv sync --locked
-uv run pytest tests/test_release_metadata.py -q
+uv run pytest tests/test_release_metadata.py tests/test_smoke.py -q
 ```
 
 Expected: all commands exit 0.
@@ -125,7 +140,7 @@ Expected: all commands exit 0.
 - [ ] **Step 6: Commit the metadata contract**
 
 ```powershell
-git add -- pyproject.toml uv.lock CITATION.cff tests/test_release_metadata.py
+git add -- pyproject.toml uv.lock CITATION.cff src/fhir_copilot/__init__.py tests/test_release_metadata.py tests/test_smoke.py
 git -c user.name=kuotunyu -c user.email=61350295+kuotunyu@users.noreply.github.com commit -m "chore(release): align v0.2.0 metadata"
 ```
 
