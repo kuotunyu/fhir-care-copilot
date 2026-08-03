@@ -179,16 +179,12 @@ def make_subset(source_dir: Path, n: int, force: bool = False) -> Path:
 
 
 def verify(subset_dir: Path) -> None:
-    """以 LocalBundleFHIRStore 實際載入子集,列出病患(M1 驗收)。"""
+    """以 LocalBundleFHIRStore 實際載入子集,驗證可用性。"""
     from fhir_copilot.store import LocalBundleFHIRStore
 
     store = LocalBundleFHIRStore(subset_dir)
     patients = store.list_patients()
-    logger.info("驗證:成功載入 %d 位病患(%s)", len(patients), subset_dir)
-    for s in patients[:5]:
-        logger.info("  - %s | %s | %s | %s", s.patient_id[:8], s.name, s.gender, s.birth_date)
-    if len(patients) > 5:
-        logger.info("  …(其餘 %d 位省略)", len(patients) - 5)
+    logger.info("驗證:成功載入 %d 位病患資料", len(patients))
 
 
 def java_major_version() -> int | None:

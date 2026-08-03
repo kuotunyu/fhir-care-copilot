@@ -293,3 +293,52 @@ class TestJavaMajorVersion:
 
         monkeypatch.setattr(subprocess, "run", _raise)
         assert dogs.java_major_version() is None
+
+
+class TestVerifyLogging:
+    @staticmethod
+    def _write_patient(path: Path, patient_id: str, family: str, birth_date: str) -> None:
+        path.write_text(
+            json.dumps(
+                {
+                    "resourceType": "Bundle",
+                    "type": "transaction",
+                    "entry": [
+                        {
+                            "resource": {
+                                "resourceType": "Patient",
+                                "id": patient_id,
+                                "name": [{"family": family, "given": ["Synthetic"]}],
+                                "gender": "other",
+                                "birthDate": birth_date,
+                            }
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_verify_logs_count_without_record_fields(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._write_patient(
+            tmp_path / "a.json", "sentinel-one-id", "SentinelFamilyOne", "1940-01-02"
+        )
+        self._write_patient(
+            tmp_path / "b.json", "sentinel-two-id", "SentinelFamilyTwo", "1950-03-04"
+        )
+        caplog.set_level("INFO", logger="synthea-data")
+
+        dogs.verify(tmp_path)
+
+        assert "驗證:成功載入 2 位病患資料" in caplog.text
+        for record_field in (
+            "sentinel",
+            "SentinelFamilyOne",
+            "SentinelFamilyTwo",
+            "other",
+            "1940-01-02",
+            "1950-03-04",
+        ):
+            assert record_field not in caplog.text
