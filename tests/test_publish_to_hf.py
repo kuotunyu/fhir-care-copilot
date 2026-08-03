@@ -364,12 +364,36 @@ class TestUploadSet:
             assert path not in uploaded, f"{path} 不該被上傳"
         assert not [p for p in uploaded if p.startswith(".env")], "任何 .env* 都不該上傳"
 
-    def test_internal_closeout_provenance_is_not_uploaded(self) -> None:
-        kept, _total = pub._simulate_upload()
-        uploaded = {rel.replace("\\", "/") for rel, _size in kept}
+    def test_internal_closeout_provenance_is_not_uploaded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        (repo / ".superpowers" / "sdd" / "nested").mkdir(parents=True)
+        (repo / "docs" / "superpowers").mkdir(parents=True)
+        (repo / "docs" / "public").mkdir(parents=True)
+        (repo / ".superpowers-public").mkdir(parents=True)
+        (repo / "README.md").write_text("# Public README\n", encoding="utf-8")
+        (repo / "docs" / "public" / "guide.md").write_text("public\n", encoding="utf-8")
+        (repo / ".superpowers" / "sdd" / "progress.md").write_text("private\n", encoding="utf-8")
+        (repo / ".superpowers" / "sdd" / "nested" / "scratch.md").write_text(
+            "private\n", encoding="utf-8"
+        )
+        (repo / "docs" / "superpowers" / "internal.md").write_text("private\n", encoding="utf-8")
+        (repo / ".superpowers-public" / "guide.md").write_text("public\n", encoding="utf-8")
+        monkeypatch.setattr(pub, "REPO_ROOT", repo)
 
-        assert not [path for path in uploaded if path.startswith("docs/superpowers/")]
-        assert "README.md" in uploaded
+        kept, _total = pub._simulate_upload()
+        uploaded = {rel for rel, _size in kept}
+        stage = tmp_path / "stage"
+        pub.stage_upload(stage, repo / "README.md")
+        staged = {path.relative_to(stage).as_posix() for path in stage.rglob("*") if path.is_file()}
+
+        for public_path in ("README.md", "docs/public/guide.md", ".superpowers-public/guide.md"):
+            assert public_path in uploaded
+            assert public_path in staged
+        for paths in (uploaded, staged):
+            assert not [path for path in paths if path.startswith(".superpowers/")]
+            assert not [path for path in paths if path.startswith("docs/superpowers/")]
 
     def test_synthea_data_is_not_uploaded(self) -> None:
         """病患資料在 image build 時才下載,不進 repo 也不進 Space。"""

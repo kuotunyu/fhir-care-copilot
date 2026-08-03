@@ -76,6 +76,7 @@ UPLOAD_IGNORE_PATTERNS = [
     # 它們仍在開發者本機,只是不對外——Space 是公開的,標準與 repo 一致。
     "PLAN.md",
     "CLAUDE.md",
+    ".superpowers/*",
     # Release-process provenance belongs in GitHub source history, not in the public demo image.
     "docs/superpowers/*",
     # **只排除 reports 底下的原始 JSON,保留 .md**(12 個檔、69 KB)。
