@@ -324,7 +324,7 @@ Use `ffprobe` and require: duration between 74.0 and 76.0 seconds, codec `h264`,
 ## Known limitations
 ```
 
-State that `v0.2.0` closes patient-scope, PII-safe observability, reference-integrity semantics, failure paths, clean install, and Docker evidence. Link the case study and CI run. Explicitly state Synthea-only, non-clinical, mock public demo, no claim-level grounding, no tenant isolation, and no clinical validation. Do not call the project production-ready.
+State that `v0.2.0` closes patient-scope, PII-safe observability, reference-integrity semantics, failure paths, clean install, and Docker evidence. Link the case study. Because the exact candidate CI run does not exist until publication Task 2 pushes `RELEASE_SHA`, place the single token `{{RELEASE_CI_RUN_URL}}` where that run link belongs; do not substitute an ancestor run. Publication Task 3 must replace this token with the successful exact-SHA run URL and rescan the notes before creating the Release. Explicitly state Synthea-only, non-clinical, mock public demo, no claim-level grounding, no tenant isolation, and no clinical validation. Do not call the project production-ready.
 
 - [ ] **Step 2: Scan all private/public copy for unsafe claims**
 
