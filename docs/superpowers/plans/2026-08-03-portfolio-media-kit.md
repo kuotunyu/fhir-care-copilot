@@ -259,7 +259,7 @@ Run `git status --short` in the worktree. Expected: clean; raw media and helper 
 - [ ] **Step 1: Create three exact-text cards using canvas-design**
 
 - Title card: `FHIR Care Copilot`, `Security-focused FHIR AI application`, `Synthea synthetic data · Non-clinical demo`.
-- Architecture card: `Frontend → FastAPI → Agent loop → Read-only tools → FHIR store`, plus `patient_id is injected by the server, not selected by the model` and `reference integrity ≠ claim grounding`.
+- Architecture card: `Frontend → FastAPI → Agent loop → Read-only tools → FHIR store`, plus `patient_id comes from caller request scope`, `injected at tool dispatch · not model-selected`, `scope isolation ≠ authorization`, and `reference integrity ≠ claim grounding`.
 - End card: `Windows/Linux CI · PostgreSQL integration · Docker health smoke`, plus `Mock public demo · No clinical validation · No tenant isolation`.
 
 All cards are 1920×1080 PNG, exact text, warm cream/deep teal/terracotta, and contain no medical branding.
@@ -285,7 +285,7 @@ All cards are 1920×1080 PNG, exact text, warm cream/deep teal/terracotta, and c
 
 5
 00:00:52,000 --> 00:01:05,000
-模型看不到 patient_id 工具參數；server 在 tool execution 前注入 session scope。
+caller 提供的 patient_id 與問題分離；server 執行工具時注入，模型無法選擇或改寫；這不等於授權。
 
 6
 00:01:05,000 --> 00:01:15,000
