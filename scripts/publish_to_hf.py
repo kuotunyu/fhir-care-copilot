@@ -309,10 +309,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _parse_secret_arg(raw: str) -> tuple[str, str]:
     if "=" not in raw:
-        raise ValueError(f"--set-secret 格式錯誤(需要 NAME=VALUE):{raw!r}")
+        raise ValueError("--set-secret 格式錯誤(需要 NAME=VALUE)")
     name, _, value = raw.partition("=")
     if not name:
-        raise ValueError(f"--set-secret 缺少 secret 名稱:{raw!r}")
+        raise ValueError("--set-secret 缺少非空 secret 名稱")
     return name, value
 
 

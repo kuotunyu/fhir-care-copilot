@@ -47,7 +47,7 @@ def test_parse_secret_arg_rejects_missing_equals() -> None:
 
 
 def test_parse_secret_arg_rejects_empty_name() -> None:
-    with pytest.raises(ValueError, match="缺少 secret 名稱"):
+    with pytest.raises(ValueError, match="非空 secret 名稱"):
         pub._parse_secret_arg("=value")
 
 
@@ -56,6 +56,23 @@ def test_main_rejects_malformed_secret_without_executing(
 ) -> None:
     exit_code = pub.main(["--repo-id", "someone/space", "--set-secret", "BROKEN"])
     assert exit_code == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "SYNTHETIC_SECRET_SENTINEL_9_NO_EQUALS",
+        "=SYNTHETIC_SECRET_SENTINEL_9_EMPTY_NAME",
+    ],
+)
+def test_main_redacts_malformed_direct_secret_diagnostics(
+    caplog: pytest.LogCaptureFixture, raw: str
+) -> None:
+    exit_code = pub.main(["--repo-id", "someone/space", "--set-secret", raw])
+
+    assert exit_code == 1
+    assert raw not in caplog.text
+    assert "SYNTHETIC_SECRET_SENTINEL_9" not in caplog.text
 
 
 class _RecordingHfApi:
