@@ -350,6 +350,13 @@ class TestUploadSet:
             assert path not in uploaded, f"{path} 不該被上傳"
         assert not [p for p in uploaded if p.startswith(".env")], "任何 .env* 都不該上傳"
 
+    def test_internal_closeout_provenance_is_not_uploaded(self) -> None:
+        kept, _total = pub._simulate_upload()
+        uploaded = {rel.replace("\\", "/") for rel, _size in kept}
+
+        assert not [path for path in uploaded if path.startswith("docs/superpowers/")]
+        assert "README.md" in uploaded
+
     def test_synthea_data_is_not_uploaded(self) -> None:
         """病患資料在 image build 時才下載,不進 repo 也不進 Space。"""
         kept, _total = pub._simulate_upload()
