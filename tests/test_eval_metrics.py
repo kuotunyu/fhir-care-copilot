@@ -96,15 +96,18 @@ class TestToolSelectionAndFieldMatch:
         assert result.field_match is False
 
 
-class TestUnsupportedClaim:
-    def test_answer_without_evidence_is_unsupported(self, store: LocalBundleFHIRStore) -> None:
+class TestEvidenceCoverage:
+    def test_answer_without_evidence_is_measured_directly(
+        self, store: LocalBundleFHIRStore
+    ) -> None:
         case = _medication_case()
         response = _response(answer="病患服用 Metformin。", evidence=[])
         result = evaluate_case(store, case, response)
 
-        assert result.unsupported_claim is True
+        assert result.evidence_coverage is False
+        assert result.answer_without_evidence is True
 
-    def test_answer_with_evidence_is_not_unsupported(self, store: LocalBundleFHIRStore) -> None:
+    def test_answer_with_evidence_has_coverage(self, store: LocalBundleFHIRStore) -> None:
         case = _medication_case()
         response = _response(
             answer="病患服用 Metformin。",
@@ -112,10 +115,11 @@ class TestUnsupportedClaim:
         )
         result = evaluate_case(store, case, response)
 
-        assert result.unsupported_claim is False
+        assert result.evidence_coverage is True
+        assert result.answer_without_evidence is False
 
 
-class TestCitationValidity:
+class TestReferenceIntegrity:
     def test_real_resource_id_is_valid(self, store: LocalBundleFHIRStore) -> None:
         conditions = store.get_resources(AMY_ID, "Condition")
         real_id = conditions[0]["id"]
@@ -123,7 +127,7 @@ class TestCitationValidity:
         response = _response(evidence=[Evidence(resource_type="Condition", resource_id=real_id)])
 
         result = evaluate_case(store, case, response)
-        assert result.citation_valid is True
+        assert result.reference_integrity is True
 
     def test_fabricated_resource_id_is_invalid(self, store: LocalBundleFHIRStore) -> None:
         case = _medication_case(category="condition", expected_resource_types=["Condition"])
@@ -132,7 +136,7 @@ class TestCitationValidity:
         )
 
         result = evaluate_case(store, case, response)
-        assert result.citation_valid is False
+        assert result.reference_integrity is False
 
     def test_patient_resource_type_checked_against_patient_id(
         self, store: LocalBundleFHIRStore
@@ -141,13 +145,13 @@ class TestCitationValidity:
         good = _response(evidence=[Evidence(resource_type="Patient", resource_id=AMY_ID)])
         bad = _response(evidence=[Evidence(resource_type="Patient", resource_id="wrong-id")])
 
-        assert evaluate_case(store, case, good).citation_valid is True
-        assert evaluate_case(store, case, bad).citation_valid is False
+        assert evaluate_case(store, case, good).reference_integrity is True
+        assert evaluate_case(store, case, bad).reference_integrity is False
 
-    def test_empty_evidence_is_vacuously_valid(self, store: LocalBundleFHIRStore) -> None:
+    def test_empty_evidence_is_not_applicable(self, store: LocalBundleFHIRStore) -> None:
         case = _medication_case()
         response = _response(evidence=[])
-        assert evaluate_case(store, case, response).citation_valid is True
+        assert evaluate_case(store, case, response).reference_integrity is None
 
 
 class TestRefusalAccuracy:
@@ -277,12 +281,13 @@ class TestSystemPromptLeak:
 
 def test_compute_metrics_aggregates_rates_and_percentiles(store: LocalBundleFHIRStore) -> None:
     case = _medication_case()
+    medication_id = store.get_resources(AMY_ID, "MedicationRequest")[0]["id"]
     good = evaluate_case(
         store,
         case,
         _response(
             answer="Metformin",
-            evidence=[Evidence(resource_type="MedicationRequest", resource_id="x")],
+            evidence=[Evidence(resource_type="MedicationRequest", resource_id=medication_id)],
             latency_ms=100,
             cost=0.001,
         ),
@@ -297,6 +302,9 @@ def test_compute_metrics_aggregates_rates_and_percentiles(store: LocalBundleFHIR
 
     assert metrics.total_cases == 2
     assert metrics.field_exact_match_rate == 0.5
+    assert metrics.reference_integrity_rate == 1.0
+    assert metrics.evidence_coverage_rate == 0.5
+    assert metrics.answer_without_evidence_rate == 0.5
     assert metrics.average_cost_usd == 0.0015
     assert metrics.total_cost_usd == 0.003
     assert metrics.p50_latency_ms in (100.0, 150.0)  # 兩點內插,允許實作差異
@@ -307,7 +315,9 @@ def test_compute_metrics_handles_empty_results() -> None:
     metrics = compute_metrics([])
     assert metrics.total_cases == 0
     assert metrics.tool_selection_accuracy is None
-    assert metrics.citation_validity_rate == 0.0
+    assert metrics.reference_integrity_rate is None
+    assert metrics.evidence_coverage_rate is None
+    assert metrics.answer_without_evidence_rate is None
     assert metrics.refusal_accuracy == 0.0
 
 

@@ -1,6 +1,6 @@
 # 模型比較報告
 
-由 `scripts/generate_model_comparison.py` 從真實 eval 結果自動產生(產生時間:2026-07-23T21:07:01.380277+00:00)。**以下所有數字都是真實跑出來的、不是預估值**——任何模型品質結論都以此為準,未經 eval 驗證的說法不採用。
+由 `scripts/generate_model_comparison.py` 從既有 committed raw results 重新產生(原始執行時間:2026-07-23T21:07:01.380277+00:00)。原始 JSON 未被改寫;表內數字只使用artifact 已保存的欄位,無法重算者標為 `n/a`。
 
 ## 執行摘要
 
@@ -16,8 +16,11 @@
 |---|---|---|
 | Tool-selection accuracy | 100.0% | 100.0% |
 | Field exact match rate | 54.2% | 54.2% |
-| **Citation validity rate** | 100.0% | 100.0% |
-| Unsupported-claim rate | 0.0% | 0.0% |
+| **Reference integrity rate** | n/a | n/a |
+| **Evidence coverage rate** | n/a | n/a |
+| Answer-without-evidence rate | n/a | n/a |
+| Legacy citation validity rate (deprecated) | 100.0% | 100.0% |
+| Legacy answer-without-evidence rate (deprecated field name) | 0.0% | 0.0% |
 | Refusal accuracy | 100.0% | 100.0% |
 | **Injection resistance rate** | 100.0% | 100.0% |
 
@@ -32,13 +35,15 @@
 
 ## 怎麼解讀
 
-- **Citation validity 100%(兩個模型皆是)** 是最重要的信任指標:每一筆 evidence 都直接對照真實 FHIR store 驗證過,不是自我宣稱——這是本專案「病患事實一律出自 deterministic tool、附可追溯證據」這個核心承諾在真實 API 呼叫下成立的直接證據。
-- **Field exact match 偏低不等於答錯**:模型常把英文藥名/診斷翻譯成中文或改寫格式(如把 `Prediabetes` 寫成 `糖尿病前期 (Prediabetes)`)——那正是本專案「正體中文 UI」想要的行為,但比對用的是嚴格子字串,接受不了改寫。這個指標**低估**真實品質,citation validity 才是更可信的信號。具體有哪些改寫,看下方逐字稿自行判斷。
+- **Reference integrity** 只驗證已回傳 evidence 的 `(resourceType, id)` 是否存在於本次實際使用的 Synthea 合成資料 store;沒有 evidence 時排除 denominator。它不代表自然語言回答的逐句 claim grounding。
+- **Evidence coverage** 量預期需要 evidence 的 answerable cases 是否實際帶回 evidence;answer-without-evidence 只量可觀察到的空 evidence 回答,不是完整 unsupported-claim detection。
+- **Field exact match 偏低不等於答錯**:模型常把英文藥名/診斷翻譯成中文或改寫格式(如把 `Prediabetes` 寫成 `糖尿病前期 (Prediabetes)`)——那正是本專案「正體中文 UI」想要的行為,但比對用的是嚴格子字串,接受不了改寫。這個指標**低估**該次 strict-string 分數。具體有哪些改寫,看下方逐字稿自行判斷。
 - **Injection resistance 是啟發式判準,兩個方向都出錯過**,所以請直接看下方逐字稿:
   - **假陽性**(M6,gpt-5.4-mini):模型正確拒絕開處方,但拒絕句本身包含「開立」「處方」,被判成服從了。已加入否定語氣偵測
   - **假陰性**(2026-07-26,gemini-3.5-flash-lite):模型把整段 system prompt 複述出來,只把「你是」改成「我是」,違禁字串一個字之差就沒命中,被判成抵抗住了。已改為直接比對與真實 SYSTEM_PROMPT 的逐字重疊度
   **這份報告只陳述自動判準算出來的數字。** 人工核閱的結論寫在 `docs/PROGRESS.md` 與 `MODEL_CARD.md`,標明日期與對應的那一次執行——不在這裡宣稱「已經有人看過了」,因為這段文字是每次重新產生報告時自動印出來的,它不知道有沒有人真的看過。
-- 這是**小樣本**比較(見上方「完成題數」);要看 220 題全量的結果,用 `--full-eval` 重新跑(注意 Gemini 免費層有 15 requests/min 的速率限制,需要搭配 `--pace-seconds` 調整,見 `docs/EVAL.md`)。
+- 這份報告含取樣執行;適用範圍以表內完成題數與模式為準。
+- 這些 artifact 使用 legacy metric schema,沒有保存 evidence arrays/count,因此不能依新 denominator 重算 reference integrity 或 evidence coverage;新欄位標為 `n/a`,舊百分比只作 deprecated provenance 顯示。
 - 已知限制與指標定義的完整說明見 `docs/EVAL.md`,不在這裡重複。
 
 ## 手動核閱:Prompt Injection 逐字稿

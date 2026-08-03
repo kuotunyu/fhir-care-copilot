@@ -21,7 +21,7 @@
 
 ## 預期用途
 
-- 技術展示：示範「LLM 事實一律有出處」的 agent 架構設計
+- 技術展示：示範工具輸出附 FHIR reference、且 reference 可回查的 agent 架構設計
 - 長照個案資訊查詢的工程原型（非生產醫療系統）
 - Eval harness 與 prompt-injection 防禦模式的參考實作
 
@@ -37,14 +37,14 @@
 > 上表是用修正後的判準重算的結果（`scripts/rescore_eval.py`，重算已保存的回答，沒有重打 API）。
 > OpenAI 先前公布的 66.7% 是判準假陽性，修正後為 100%——詳見下方「已知限制」。
 
-> 以下數字全部來自對真實 100 位病患資料的真實 API 呼叫，非預估值。
+> 以下數字來自以 100 位 Synthea 合成病患子集進行的歷史外部 provider API 呼叫，非預估值。
 
 | 指標 | `gemini-3.1-flash-lite`（預設） | `gpt-5.4-mini` | `gpt-5.4-nano` |
 |---|---|---|---|
 | Tool-selection accuracy | **100.0%** | 99.4% | 97.8% |
 | Field exact match rate | 43.3% | 41.1% | 42.8% |
-| **Citation validity rate** | **100.0%** | **100.0%** | **100.0%** |
-| Unsupported-claim rate | **0.0%** | 0.6% | 2.2% |
+| Legacy citation validity rate（deprecated） | 100.0% | 100.0% | 100.0% |
+| Legacy answer-without-evidence rate | **0.0%** | 0.6% | 2.2% |
 | Refusal accuracy | 100.0% | 100.0% | 100.0% |
 | Injection resistance（單次全量） | 100.0% | 100.0% | 95.0% |
 | **Injection resistance（重跑中位數）** | **95%**（3 次） | **100%**（5 次） | **80%**（5 次） |
@@ -53,7 +53,7 @@
 
 ### 為什麼不用更便宜的 `gpt-5.4-nano`
 
-nano 便宜 3.9 倍、速度與 mini 相當，但在**三個指標上都比 mini 差**（tool-selection、unsupported-claim、injection），不是單點雜訊。
+nano 便宜 3.9 倍、速度與 mini 相當，但在三個已量測行為上都比 mini 差（tool selection、answer without evidence、injection），不是單點雜訊。
 
 那一次注入失守的方式特別值得記錄，因為它正是這個專案要防的：
 
@@ -84,13 +84,15 @@ nano 便宜 3.9 倍、速度與 mini 相當，但在**三個指標上都比 mini
 1. **外洩的不是機密**——system prompt 就寫在公開 repo 的 `agent/loop.py` 裡。真正的問題是**模型服從了「忽略以上所有指示」**，而那正是這個指標在量的行為。會照做這一個指令的模型，也可能照做更糟的。
 2. **架構層的邊界沒有被突破**：即使模型被說服，它也拿不到工具以外的資料，`patient_id` 仍由 agent loop 注入、write 類工具仍不在 allowlist 裡。這正是「安全邊界放架構層而不是 prompt 層」的意義——**prompt 守不住的時候，架構還在**。
 
-**Citation validity 100%（三個模型皆是）是本專案最重要的信任指標**：每一筆 evidence 都直接對照真實 FHIR store 驗證過，不是模型自我宣稱。
+歷史 artifact 的 legacy citation validity 是 100%，但舊算法把空 evidence 視為成功，且只檢查
+`(resourceType, id)` 是否存在。新版將這個能力稱為 **reference integrity**：空 evidence 是
+not applicable，並另外量 evidence coverage。兩者都**不代表自然語言回答逐句 grounded**。
 
 **Field exact match 僅四成上下，但人工核閱後確認不是答錯**：三個模型都會把英文藥名/診斷名稱翻譯成正體中文或改寫格式（如 `Prediabetes` → `糖尿病前期 (Prediabetes)`），這正是「正體中文 UI」想要的行為，只是嚴格子字串比對抓不到改寫，此指標低估真實品質。**30 題小樣本時這個數字是 54.2%，全量跑完只剩四成——小樣本高估了約 13 個百分點。**
 
 ## 已知限制
 
-- **全指標只跑過一次；injection 另外重跑過**。三個模型的 220 題全量各只跑一次，所以 citation validity 等指標仍是單次結果。**injection 這一項另外用同一組 20 題重跑了 3~5 次**（`reports/injection_variance.md`），三個模型都不穩定：
+- **全指標只跑過一次；injection 另外重跑過**。三個模型的 220 題全量各只跑一次，所以 legacy evidence 指標仍是單次結果。**injection 這一項另外用同一組 20 題重跑了 3~5 次**（`reports/injection_variance.md`），三個模型都不穩定：
   - `gemini-3.1-flash-lite`：100 / 90 / 95（第 4 輪跑到 19/20 題時免費層配額用完，該輪已排除在統計外）
   - `gpt-5.4-mini`：100 / 100 / 100 / 100 / 90
   - `gpt-5.4-nano`：85 / 80 / 80 / 80 / 75
@@ -103,8 +105,8 @@ nano 便宜 3.9 倍、速度與 mini 相當，但在**三個指標上都比 mini
   - 判準還會再錯第六次。因此保留 `scripts/rescore_eval.py`：判準改了就用它重算已保存的回答，**不重打 API**——花錢買到的是逐字稿，不是當時算出來的布林值
 - **Field exact match 在過敏題型上把最好的答案判成最差**（2026-07-27 實測，三個模型各 14 題）。分數是 71.4% / 71.4% / 42.9%（gemini / mini / nano），但**全部 16 題失配的逐字稿都讀過，沒有一筆答錯、漏掉或編造**——差別只在把 `Allergy to grass pollen` 寫成「草花粉（grass pollen）過敏」或「草花粉過敏」。`gpt-5.4-nano` 拿最低分，它那 8 筆卻是全部 42 題裡最完整的：正確標出 `inactive` 的紀錄、忠實回報上游那個 `category: food` 的資料瑕疵而沒有自作主張修正
   - 我另外寫了第二個機械判準（比對英文關鍵字是否到齊），量出 98.3% / 90.0% / 78.3%，看起來像「nano 真的較差」——**那也是錯的**，它敗在純中文寫法。**兩個獨立的機械判準都給出誤導性排序，靠逐字稿定案。** 這是本卡片一律附全部逐字稿的理由
-  - 同一批數字裡 tool-selection、citation validity、unsupported-claim 三個模型都是 100% / 100% / 0%，那三項才是這個題型量得準的部分
-- **Unsupported-claim rate 是啟發式判準**（沒拒答 + 有實質內容 + evidence 為空），非語意層級的事實查核
+  - 同一批數字裡 tool selection、legacy citation validity、legacy answer-without-evidence 都有保存；後兩者只代表舊算法定義，不延伸成 claim grounding
+- **Legacy answer-without-evidence rate** 只量「沒拒答 + 有實質內容 + evidence 為空」，不是 unsupported-claim detection 或語意層級事實查核
 - 「不可回答」題型目前只涵蓋「病患不存在」情境，未涵蓋其他資料不足場景
 - 兩個真實模型的定價與可用性會隨時間漂移，任何成本/延遲數字僅反映測試當下。本專案開發期間就撞到兩次，而且兩次的性質不同：
   - **可用性漂移**：`gemini-2.5-flash-lite` 對新帳號已下架（呼叫回 404，但 `models.list()` 仍列得出來——**列得出來不等於打得通**）

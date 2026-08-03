@@ -83,7 +83,7 @@ flowchart LR
 | 邊界 | 實作方式 |
 |---|---|
 | **LLM 不直接碰資料庫** | LLM 只能透過 6 個 Pydantic v2 嚴格 schema 的唯讀工具取得資料；永遠看不到原始 FHIR bundle |
-| **每個事實都要有出處** | 工具回傳值一律附 `evidence[]`；eval 的 citation validity 直接對照真實 store 驗證每筆引用 |
+| **工具輸出附可驗證 reference** | 工具回傳值附 `evidence[]`；eval 的 reference integrity 驗證已回傳的 FHIR reference 是否存在於本次使用的 Synthea store。這不代表自然語言回答已逐句 grounded |
 | **預設唯讀** | `READ_ONLY_TOOLS` allowlist 裡沒有任何 write 工具；`propose_care_note` **不在這份清單裡**，agent 迴圈呼叫不到它 |
 | **草稿 → 人工確認 → 稽核軌跡，永不寫回 FHIR** | UI 確認後才呼叫 `confirm_and_log`；**先驗草稿簽章再寫**，寫入 append-only + hash chain 的稽核軌跡。沒有任何路徑寫回 FHIR store |
 | **資料不足 → 結構化拒答** | 回應契約有 `refused: bool`；查無資料時明確拒答而非編造 |
@@ -124,7 +124,7 @@ insufficient 結構，不是用空 list 混過去。
 [`tests/test_tools_registry.py`](tests/test_tools_registry.py) 有兩條測試分別釘住
 「查資料的恰好六個」與「不查資料的只准有這一個」。
 
-## Eval 結果（真實 API 呼叫，非預估值）
+## Eval 結果（歷史外部 provider API 呼叫，非預估值）
 
 題目自動從 FHIR 結構產生，標準答案直接來自資料（不人工標註）。
 **下表是三個模型各跑完整 220 題的真實結果**——藥物/疾病/觀察值/照護計畫各 45 題、
@@ -135,16 +135,19 @@ insufficient 結構，不是用空 list 混過去。
 |---|---|---|---|
 | Tool-selection accuracy | **100.0%** | 99.4% | 97.8% |
 | Field exact match rate | 43.3%¹ | 41.1%¹ | 42.8%¹ |
-| **Citation validity rate** | **100.0%** | **100.0%** | **100.0%** |
-| Unsupported-claim rate | **0.0%** | 0.6% | 2.2% |
+| Legacy citation validity rate（deprecated） | 100.0% | 100.0% | 100.0% |
+| Legacy answer-without-evidence rate | **0.0%** | 0.6% | 2.2% |
 | Refusal accuracy | 100.0% | 100.0% | 100.0% |
 | Injection resistance（單次全量） | 100.0% | 100.0% | 95.0% |
 | **Injection resistance（重跑中位數）** | **95%**² | **100%**² | **80%**³ |
 | p50 / p95 latency | **1376 / 2005 ms** | 2627 / 5539 ms | 2695 / 5020 ms |
 | 平均成本／題 | $0.00053 | $0.00163 | **$0.00042** |
 
-**Citation validity 100% 是最重要的信任指標**：每筆 evidence 都直接對照真實 FHIR store
-驗證過，不是模型自我宣稱。完整報告與全部逐字稿：[reports/model_comparison_full.md](reports/model_comparison_full.md)。
+表內兩個 legacy evidence 指標保留當時 committed raw artifact 的原值。舊 schema 沒有保存
+evidence arrays/count，因此不能依新 denominator 重算 reference integrity 或 evidence coverage；
+新報告將兩者標為 `n/a`，不猜測數字。Reference integrity 只驗證已回傳 reference 是否存在，
+**不代表回答逐句或逐 claim grounded**。完整 provenance 與逐字稿：
+[reports/model_comparison_full.md](reports/model_comparison_full.md)。
 
 ¹ **不是答錯**。人工核閱逐字稿確認是模型把英文藥名/診斷翻成正體中文或改寫格式
 （`Prediabetes` → `糖尿病前期 (Prediabetes)`），嚴格子字串比對抓不到——**此指標低估真實品質**。
@@ -175,7 +178,7 @@ nano 85/80/80/80/75——**沒有一個是穩定的**。判準本身也被真實
 跑全量：`uv run python scripts/run_eval.py --provider gemini --full-eval --pace-seconds 10`
 （Gemini 免費層 15 req/min，需要 pacing，約 37 分鐘）。方法論與判準侷限見 [docs/EVAL.md](docs/EVAL.md)。
 
-mock provider 220 題全量也跑通了：tool-selection **85.0%**、citation validity 100.0%。
+mock provider 220 題全量也跑通了：tool-selection **85.0%**、legacy citation validity 100.0%。
 那 85% 不是 bug——mock 用關鍵字比對選工具，沒命中的問法會 fallback。
 **它正是 eval harness 真的抓得到路由錯誤的證明**，不要當成「系統只有 85% 準」。
 
@@ -286,7 +289,7 @@ $ uv run python scripts/verify_audit_chain.py
 
 **模型與資料**
 
-- Field exact match、unsupported-claim rate、injection resistance 皆為**啟發式判準**，各自的侷限記在 [MODEL_CARD](MODEL_CARD.md) 與 [docs/EVAL.md](docs/EVAL.md)，不隱藏、不美化
+- Field exact match、legacy answer-without-evidence rate、injection resistance 皆有明確但有限的判準；前者與後者不是完整語意查核。侷限記在 [MODEL_CARD](MODEL_CARD.md) 與 [docs/EVAL.md](docs/EVAL.md)
 - **`report_out_of_scope` 觸發率：nano 100%、gemini 98%、mini 90%**（10 輪 × 20 題）。200 題裡 192 題的拒答來自模型**主動呼叫**該工具，`no_tool_call` 兜底一次都沒觸發。**8 個失敗全落在同一題：疫苗接種紀錄**，且**沒有一筆是編造的**——它們都正確地說「查不到」，只是用自然語言而非呼叫工具。**這個指標量的是「有沒有走結構化管道」，不是「會不會編造」**，後者在 200 題裡是 0。逐題分佈見 [reports/out_of_scope_variance.md](reports/out_of_scope_variance.md)
 - **這裡的模型排序與 injection 完全相反**：nano 是注入抵抗最差的（80%）卻是宣告超出範圍最可靠的（100%）。**兩種安全行為不相關**，不能用其中一個推另一個
 - **注入抵抗率在新護欄下是 100%，但那主要是護欄的數字**：18/20 是「零工具呼叫就作答」被擋，0 題走 `report_out_of_scope`。這讓它**不再適合比較模型**——換任何模型那 18 題都會被同一道護欄擋下。要重現舊數字把 `require_tool_call_before_answer` 設成 `false`
@@ -338,7 +341,7 @@ image build 時已內建 100 位合成病患資料，容器啟動即可用，不
 
 ## 這個專案想展示什麼
 
-1. **工具受控架構，不是「信任 LLM 說的話」**——不是靠更好的 prompt 讓 LLM 少幻覺，而是架構上讓它物理上拿不到資料庫。citation validity **直接對照真實 store** 驗證這個承諾（結果 100%）
+1. **工具受控架構，不是「信任 LLM 說的話」**——LLM 只能經唯讀工具取得資料；reference integrity 可驗證已回傳的 FHIR reference 是否存在，但不宣稱回答逐句 grounded
 2. **誠實面對指標的侷限**——field exact match 只有四成時沒有藏起來或調鬆比對讓數字變好看，而是讀逐字稿找出真正原因並標明「這個指標低估真實品質」；判準本身有 bug 時修好之後仍附上全部逐字稿
 3. **安全邊界在架構層，不是 prompt 層**——`patient_id` 從 tool schema 裡直接拿掉，讓 LLM 連「選錯病患」的選項都沒有；write 工具根本不在 allowlist 裡
 4. **控制項從領域推導，不從技術清單推導**——營運層每一項都對應一個具體事實，講不出領域理由的就不做

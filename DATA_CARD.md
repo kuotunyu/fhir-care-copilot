@@ -14,13 +14,13 @@
 
 ## 為什麼用合成資料
 
-長照個案查詢系統若用真實病患資料開發、測試、甚至部署到公開展示環境，會直接涉及 PHI（受保護健康資訊）與嚴重的隱私/法規風險。Synthea 用統計模型與臨床路徑規則產生**統計上合理但完全虛構**的病患與病歷，讓工程開發、UI 展示、eval 都能在不涉及任何真人資料的前提下進行。**本專案的部署環境（含任何公開 demo）永遠不會、也不能出現真實病患資料**——這是架構層的保證，不是操作上的承諾。
+長照個案查詢系統若用真實病患資料開發、測試、甚至部署到公開展示環境，會直接涉及 PHI（受保護健康資訊）與嚴重的隱私/法規風險。Synthea 用統計模型與臨床路徑規則產生**統計上合理但完全虛構**的病患與病歷，讓工程開發、UI 展示、eval 都能在不涉及任何真人資料的前提下進行。公開 demo 與 committed artifacts 的資料政策是 **Synthea-only**；程式本身仍可設定任意 FHIR data directory，因此這是明確的專案／發布邊界，不是自動阻止真實資料載入的架構保證。
 
 ## 資料結構（FHIR R4 Bundle）
 
 - 每位病患一個 JSON 檔案 = 一個 `Bundle`（`type: "transaction"`），第一個 entry 是 `Patient`，其餘資源大致依 Encounter 時序排列
 - 涵蓋的資源型別：`Patient`、`Condition`、`MedicationRequest`（部分含 `Medication`）、`Observation`、`CarePlan`、`Encounter`、`Practitioner`、`Organization`、`ExplanationOfBenefit` 等
-- Bundle 內互相參照使用 `urn:uuid:` fullUrl；經對真實 1,000 位病患樣本（190 萬筆 reference 欄位）逐一掃描驗證：**Practitioner / Organization 皆內嵌在病患 bundle 內、可正常解析**（僅 `ExplanationOfBenefit` 內的 `#` 開頭 contained-resource 參照無法解析，因無工具讀取該資源）
+- Bundle 內互相參照使用 `urn:uuid:` fullUrl；經對完整 1,000 位 Synthea 合成病患樣本（190 萬筆 reference 欄位）逐一掃描驗證：**Practitioner / Organization 皆內嵌在病患 bundle 內、可正常解析**（僅 `ExplanationOfBenefit` 內的 `#` 開頭 contained-resource 參照無法解析，因無工具讀取該資源）
 - 附帶的 `hospitalInformation*.json` / `practitionerInformation*.json` 是機構層級的 `batch` bundle，非病患資料，載入時略過
 
 ### 已知的資料版本差異與瑕疵（實測發現，寫入 parser 的相容邏輯）
@@ -52,7 +52,7 @@
 
 也就是說：**「開藥前檢查藥物過敏」這個 `AllergyIntolerance` 最核心的臨床用途，用這份資料一次都示範不了**，換一個子集也沒用。
 
-工具本身處理得了那些情況（藥物類別、高危險度、反應表現、`intolerance`、已被否定的紀錄），但那些路徑只有 `tests/data/fixtures/` 裡手工打造的病患走得到——fixture 刻意補上真實語料涵蓋不到的組合，見 `tests/test_tools_allergies.py`。
+工具本身處理得了那些情況（藥物類別、高危險度、反應表現、`intolerance`、已被否定的紀錄），但那些路徑只有 `tests/data/fixtures/` 裡手工打造的合成病患走得到——fixture 刻意補上 Synthea 樣本未涵蓋的組合，見 `tests/test_tools_allergies.py`。
 
 **沒有為了讓 demo 好看而補資料。** 這個專案對上游資料的立場是「記錄但不修正，不擅自竄改」（上表 `vital-sign` 單複數誤植那一列即是先例）。分得清「工具能力」與「資料涵蓋」比展示得漂亮重要。
 

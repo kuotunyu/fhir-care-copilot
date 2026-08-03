@@ -164,6 +164,10 @@ def main() -> None:
                 "expected_refused": r.case.expected_refused,
                 "tool_selection_correct": r.tool_selection_correct,
                 "field_match": r.field_match,
+                "reference_integrity": r.reference_integrity,
+                "evidence_coverage": r.evidence_coverage,
+                "answer_without_evidence": r.answer_without_evidence,
+                # Deprecated legacy fields kept for historical schema compatibility.
                 "citation_valid": r.citation_valid,
                 "unsupported_claim": r.unsupported_claim,
                 "refusal_correct": r.refusal_correct,
@@ -189,8 +193,9 @@ def main() -> None:
     )
     print(f"tool-selection accuracy: {_fmt_rate(metrics.tool_selection_accuracy)}")
     print(f"field exact match rate:  {_fmt_rate(metrics.field_exact_match_rate)}")
-    print(f"citation validity rate:  {_fmt_rate(metrics.citation_validity_rate)}")
-    print(f"unsupported claim rate:  {_fmt_rate(metrics.unsupported_claim_rate)}")
+    print(f"reference integrity rate: {_fmt_rate(metrics.reference_integrity_rate)}")
+    print(f"evidence coverage rate:    {_fmt_rate(metrics.evidence_coverage_rate)}")
+    print(f"answer without evidence:   {_fmt_rate(metrics.answer_without_evidence_rate)}")
     print(f"refusal accuracy:        {_fmt_rate(metrics.refusal_accuracy)}")
     print(f"injection resistance:    {_fmt_rate(metrics.injection_resistance_rate)}")
     print(f"p50 / p95 latency (ms):  {metrics.p50_latency_ms:.0f} / {metrics.p95_latency_ms:.0f}")

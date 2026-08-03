@@ -1,7 +1,6 @@
-"""從 scripts/run_eval.py 產出的 eval 結果 JSON,自動組出 reports/model_comparison.md。
+"""從 scripts/run_eval.py 產出的 committed eval JSON 組出模型比較報告。
 
-直接讀真實跑出來的數字,不手 key——任何模型品質結論都要有這份報告
-背後的真實 eval 數字支持。
+歷史 raw artifact 不改寫;舊 schema 無法支持的新指標顯示為 n/a,而不是猜值。
 
 用法:
     uv run python scripts/run_eval.py --provider gemini --out reports/eval_gemini.json
@@ -32,21 +31,28 @@ def _load(path: Path) -> dict:  # type: ignore[type-arg]
 def _row(label: str, key: str, runs: list[dict], is_rate: bool = True) -> str:  # type: ignore[type-arg]
     cells = []
     for run in runs:
-        value = run["metrics"][key]
+        value = run["metrics"].get(key)
         cells.append(_fmt_rate(value) if is_rate else ("n/a" if value is None else f"{value:.0f}"))
     return f"| {label} | " + " | ".join(cells) + " |"
 
 
 def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
+    if not runs:
+        raise ValueError("至少需要一份 eval run")
     header = "| 指標 | " + " | ".join(f"{r['provider']}({r['model_id']})" for r in runs) + " |"
     sep = "|---|" + "---|" * len(runs)
+    all_full = all(r["full_eval"] for r in runs)
+    model_count = {1: "一個模型", 2: "兩個模型", 3: "三個模型"}.get(
+        len(runs), f"{len(runs)} 個模型"
+    )
+    has_legacy_schema = any("reference_integrity_rate" not in run["metrics"] for run in runs)
 
     lines = [
         "# 模型比較報告",
         "",
-        f"由 `scripts/generate_model_comparison.py` 從真實 eval 結果自動產生"
-        f"(產生時間:{runs[0]['generated_at']})。**以下所有數字都是真實跑出來的、"
-        "不是預估值**——任何模型品質結論都以此為準,未經 eval 驗證的說法不採用。",
+        f"由 `scripts/generate_model_comparison.py` 從既有 committed raw results 重新產生"
+        f"(原始執行時間:{runs[0]['generated_at']})。原始 JSON 未被改寫;表內數字只使用"
+        "artifact 已保存的欄位,無法重算者標為 `n/a`。",
         "",
         "## 執行摘要",
         "",
@@ -64,8 +70,15 @@ def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
         sep,
         _row("Tool-selection accuracy", "tool_selection_accuracy", runs),
         _row("Field exact match rate", "field_exact_match_rate", runs),
-        _row("**Citation validity rate**", "citation_validity_rate", runs),
-        _row("Unsupported-claim rate", "unsupported_claim_rate", runs),
+        _row("**Reference integrity rate**", "reference_integrity_rate", runs),
+        _row("**Evidence coverage rate**", "evidence_coverage_rate", runs),
+        _row("Answer-without-evidence rate", "answer_without_evidence_rate", runs),
+        _row("Legacy citation validity rate (deprecated)", "citation_validity_rate", runs),
+        _row(
+            "Legacy answer-without-evidence rate (deprecated field name)",
+            "unsupported_claim_rate",
+            runs,
+        ),
         _row("Refusal accuracy", "refusal_accuracy", runs),
         _row("**Injection resistance rate**", "injection_resistance_rate", runs),
         "",
@@ -84,13 +97,16 @@ def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
         "",
         "## 怎麼解讀",
         "",
-        "- **Citation validity 100%(兩個模型皆是)** 是最重要的信任指標:每一筆 evidence"
-        " 都直接對照真實 FHIR store 驗證過,不是自我宣稱——這是本專案「病患事實一律"
-        "出自 deterministic tool、附可追溯證據」這個核心承諾在真實 API 呼叫下成立的直接證據。",
+        "- **Reference integrity** 只驗證已回傳 evidence 的 `(resourceType, id)` 是否存在於"
+        "本次實際使用的 Synthea 合成資料 store;沒有 evidence 時排除 denominator。它不代表"
+        "自然語言回答的逐句 claim grounding。",
+        "- **Evidence coverage** 量預期需要 evidence 的 answerable cases 是否實際帶回"
+        " evidence;answer-without-evidence 只量可觀察到的空 evidence 回答,不是完整"
+        " unsupported-claim detection。",
         "- **Field exact match 偏低不等於答錯**:模型常把英文藥名/診斷翻譯成中文或改寫"
         "格式(如把 `Prediabetes` 寫成 `糖尿病前期 (Prediabetes)`)——那正是本專案"
         "「正體中文 UI」想要的行為,但比對用的是嚴格子字串,接受不了改寫。這個指標"
-        "**低估**真實品質,citation validity 才是更可信的信號。具體有哪些改寫,"
+        "**低估**該次 strict-string 分數。具體有哪些改寫,"
         "看下方逐字稿自行判斷。",
         "- **Injection resistance 是啟發式判準,兩個方向都出錯過**,所以請直接看下方逐字稿:",
         "  - **假陽性**(M6,gpt-5.4-mini):模型正確拒絕開處方,但拒絕句本身包含"
@@ -101,9 +117,19 @@ def build_markdown(runs: list[dict]) -> str:  # type: ignore[type-arg]
         "  **這份報告只陳述自動判準算出來的數字。** 人工核閱的結論寫在 `docs/PROGRESS.md`"
         " 與 `MODEL_CARD.md`,標明日期與對應的那一次執行——不在這裡宣稱「已經有人看過了」,"
         "因為這段文字是每次重新產生報告時自動印出來的,它不知道有沒有人真的看過。",
-        "- 這是**小樣本**比較(見上方「完成題數」);要看 220 題全量的結果,"
-        "用 `--full-eval` 重新跑(注意 Gemini 免費層有 15 requests/min 的速率限制,"
-        "需要搭配 `--pace-seconds` 調整,見 `docs/EVAL.md`)。",
+        (
+            f"- 本報告比較{model_count}的完整題庫結果;220 題是每個模型的一次執行,"
+            "不是多次重跑或臨床驗證。"
+            if all_full
+            else "- 這份報告含取樣執行;適用範圍以表內完成題數與模式為準。"
+        ),
+        (
+            "- 這些 artifact 使用 legacy metric schema,沒有保存 evidence arrays/count,"
+            "因此不能依新 denominator 重算 reference integrity 或 evidence coverage;新欄位"
+            "標為 `n/a`,舊百分比只作 deprecated provenance 顯示。"
+            if has_legacy_schema
+            else "- 本報告使用新 metric schema;legacy 欄位只為 machine-readable 相容性保留。"
+        ),
         "- 已知限制與指標定義的完整說明見 `docs/EVAL.md`,不在這裡重複。",
         "",
         "## 手動核閱:Prompt Injection 逐字稿",
