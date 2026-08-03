@@ -44,6 +44,14 @@ def test_readme_defines_reference_integrity_without_claim_grounding() -> None:
     assert "reference integrity" in text.lower()
 
 
+@pytest.mark.parametrize("relative_path", ("README.md", "docs/CASE_STUDY.md"))
+def test_public_patient_scope_copy_describes_each_api_request(relative_path: str) -> None:
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    stale_phrases = ("session scope", "依 session")
+    found = [phrase for phrase in stale_phrases if phrase in text]
+    assert not found, f"{relative_path} 含過時的 session scope 說法: {found}"
+
+
 def test_case_study_has_required_boundaries_and_evidence_links() -> None:
     text = (REPO_ROOT / "docs/CASE_STUDY.md").read_text(encoding="utf-8")
     required = (

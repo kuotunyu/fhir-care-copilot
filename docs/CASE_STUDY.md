@@ -10,7 +10,7 @@ FHIR Care Copilot 是一個預設唯讀的長照個案查詢工作台。它把 R
 
 ## 問題不是「讓模型看資料」，而是限制它只能看哪一位病患
 
-前端把工作人員已選取的病患與問題送到 FastAPI。FastAPI 以該病患建立本次對話的 session scope；這個 scope 是模型存取資料時的邊界，但**不是**使用者對該病患已獲授權的證明。
+Caller 在每次 API request 中把 `patient_id` 與 `question` 分開提供給 FastAPI。FastAPI 讓該 request 的 `patient_id` 保持在 model-facing tool arguments 之外；agent loop 到 tool dispatch 時才注入它，並覆蓋模型輸出的任何衝突值。這只限制模型不能跨越 caller 選定的 patient scope；它不限制 caller 能選哪位病患，也不構成 entitlement、authorization 或 tenant isolation。
 
 目前的 API key 只做 caller authentication。系統尚未提供 user-to-patient entitlement、RBAC、tenant isolation 或 SMART-on-FHIR，因此不能把 patient scope 或 API authentication 稱為 patient-level authorization。這項區分在 [MODEL_CARD](../MODEL_CARD.md) 與 [SECURITY](../SECURITY.md) 都有明確記錄。
 
@@ -28,7 +28,7 @@ FHIR Care Copilot 是一個預設唯讀的長照個案查詢工作台。它把 R
 
 ### 1. server-injected patient scope
 
-LLM-facing schema 不公開 `patient_id`；loop 在工具執行前立即注入 session 中由伺服器持有的 id。這縮小了 prompt injection 能影響的介面，也避免把病患選擇權交給模型。它處理的是**模型不能跨越既定 scope**，不替代前一層的使用者授權或 tenant isolation。
+Caller 在每次 API request 中把 `patient_id` 與 `question` 分開提供給 FastAPI。FastAPI 讓該 request 的 `patient_id` 保持在 model-facing tool arguments 之外；agent loop 到 tool dispatch 時才注入它，並覆蓋模型輸出的任何衝突值。這縮小了 prompt injection 能影響的介面。這只限制模型不能跨越 caller 選定的 patient scope；它不限制 caller 能選哪位病患，也不構成 entitlement、authorization 或 tenant isolation。
 
 ### 2. tool-controlled retrieval 與嚴格 schema
 

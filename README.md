@@ -94,7 +94,7 @@ flowchart LR
 | **草稿 → 明確確認 → 稽核軌跡，永不寫回 FHIR** | Backend 提供 propose/confirm API，confirm 時**先驗草稿簽章再寫** append-only + hash chain audit；React confirmation UI 尚未實作。沒有任何路徑寫回 FHIR store |
 | **資料不足 → 結構化拒答** | 回應契約有 `refused: bool`；查無資料時明確拒答而非編造 |
 | **FHIR 欄位內容視為 data，不是指令** | Prompt injection 防禦邊界，eval 內建 injection 題型 |
-| **病患範圍由伺服器端注入** | `patient_id` 從 LLM 看得到的工具 schema 中移除，由 agent loop 依 session 直接注入（[ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
+| **病患範圍由伺服器端注入** | Caller 在每次 API request 中把 `patient_id` 與 `question` 分開提供給 FastAPI。FastAPI 讓該 request 的 `patient_id` 保持在 model-facing tool arguments 之外；agent loop 到 tool dispatch 時才注入它，並覆蓋模型輸出的任何衝突值。這只限制模型不能跨越 caller 選定的 patient scope；它不限制 caller 能選哪位病患，也不構成 entitlement、authorization 或 tenant isolation（[ADR 0003](docs/decisions/0003-patient-scope-injection.md)） |
 | **Secret 只從環境變數來** | `.env`、`data/raw`、`data/processed` 永不進 git |
 
 **Agent loop 護欄**（[`configs/guardrails.yaml`](configs/guardrails.yaml)，不寫死在程式）：
