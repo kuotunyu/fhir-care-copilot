@@ -6,6 +6,7 @@ PII 的部分在 ``tests/test_pii_redaction.py``,那是這個 Phase 最重要的
 
 import json
 import logging
+import re
 from collections.abc import Callable, Iterator
 from io import StringIO
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 from fhir_copilot.api import dependencies
 from fhir_copilot.api.app import create_app
 from fhir_copilot.ops import metrics as metrics_module
+from fhir_copilot.ops import middleware as middleware_module
 from fhir_copilot.ops import tracing
 from fhir_copilot.ops.logging import JsonFormatter
 from fhir_copilot.ops.middleware import REQUEST_ID_HEADER
@@ -83,6 +85,42 @@ class TestRequestId:
         response = make_client().get("/api/health", headers={REQUEST_ID_HEADER: "trace-me-123"})
 
         assert response.headers[REQUEST_ID_HEADER] == "trace-me-123"
+
+    @pytest.mark.parametrize(
+        "malicious",
+        (
+            "line1\nline2",
+            '{"patient":"Amy002"}',
+            "x" * 65,
+            "病患識別碼",
+            "contains spaces",
+        ),
+    )
+    def test_invalid_request_id_is_replaced(self, malicious: str) -> None:
+        normalize = getattr(middleware_module, "normalize_request_id", lambda value: value)
+        normalized = normalize(malicious)
+
+        assert normalized != malicious
+        assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", normalized)
+
+    def test_invalid_request_id_is_not_echoed_to_response_or_logs(
+        self, make_client: ClientFactory
+    ) -> None:
+        malicious = '{"patient":"Amy002"}'
+        client = make_client()
+        response_holder: list[Any] = []
+
+        lines = captured_logs(
+            client,
+            lambda: response_holder.append(
+                client.get("/api/health", headers={REQUEST_ID_HEADER: malicious})
+            ),
+        )
+
+        response_id = response_holder[0].headers[REQUEST_ID_HEADER]
+        assert response_id != malicious
+        assert re.fullmatch(r"[A-Za-z0-9._-]{1,64}", response_id)
+        assert malicious not in json.dumps(lines, ensure_ascii=False)
 
     def test_every_log_line_of_one_request_shares_the_id(self, make_client: ClientFactory) -> None:
         """同一個請求的所有日誌行帶同一個 id——這是事後查案唯一的線索。"""

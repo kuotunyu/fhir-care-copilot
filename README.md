@@ -190,7 +190,7 @@ mock provider 220 題全量也跑通了：tool-selection **85.0%**、legacy cita
 | 事實 | 控制 | 實際證據 |
 |---|---|---|
 | `/api/chat` 每次呼叫都花真錢，端點原本完全開放 | API key 認證、每 key token bucket 限流、每日成本上限 | 無 key 401；超速 429 + `Retry-After`；超預算 429 + `budget_exceeded`（不是 500）。[`test_auth`](tests/test_auth.py)、[`test_rate_limit`](tests/test_rate_limit.py)、[`test_budget`](tests/test_budget.py) |
-| 日誌與 trace 會經手病患資料 | PII 遮蔽（`patient_id` 雜湊、自由文字只記長度、姓名完全不記）、request ID、四層 span、`/metrics` | **grep 斷言測試**：跑完整條請求，捕捉所有日誌與 span，斷言真實姓名／原始文字／完整 id 都不在裡面。[`test_pii_redaction`](tests/test_pii_redaction.py) |
+| 日誌與 trace 會經手病患資料 | PII 遮蔽（`patient_id` 使用 process-local keyed HMAC、自由文字只記形狀、姓名完全不記）、清洗 request ID、四層 span、`/metrics` | **grep 斷言測試**：跑完整條請求並捕捉所有日誌與 span，斷言合成姓名／原始文字／完整 id 都不在裡面。[`test_pii_redaction`](tests/test_pii_redaction.py) |
 | 外部 LLM provider 會超時、會 429、會回垃圾 | 單次呼叫逾時（下在 SDK，真的中止請求）、指數退避、熔斷 | 熔斷開啟後 provider 不再被呼叫（trace 上少一個 span）；重試成本記進預算。[`test_resilience`](tests/test_resilience.py) |
 | 稽核軌跡是「誰對哪位病患記了什麼」的憑據 | 草稿 HMAC 簽章 + hash chain + 併發安全的 append | 偽造草稿被擋且什麼都沒寫進去；竄改／刪除／重排任一列都能**指出是哪一列**。[`test_audit_trail`](tests/test_audit_trail.py) |
 
@@ -283,9 +283,9 @@ $ uv run python scripts/verify_audit_chain.py
 - 匿名呼叫者依來源 IP 分桶，IP 取自 `X-Forwarded-For`，**那個 header 可以偽造**。擋錢的主防線是每日預算上限（不分身分）；限流管的是公平性，不是防惡意
 - 稽核鏈**抓不出「整條鏈被重算」**——有寫入權限的人可以重建整條鏈。這個限制寫成了一個會通過的測試，不只寫在文件裡
 - 檔案模式的稽核軌跡**多 process 不安全**；草稿簽章金鑰未設定時是 process 臨時金鑰，多實例**必須**設共用金鑰
-- `patient_id` 的雜湊沒有加 salt。對合成資料足夠，換真實資料時已知 id 集合可被暴力反查
+- `patient_id` pseudonym 的 HMAC key 是 process-local random key；公開 id 清單無法離線重算，但 restart／不同 worker 之間也無法關聯
 - Phase 4 之前的舊 JSONL 稽核檔（沒有 hash chain）**不會自動遷移**
-- 日誌只輸出到 stdout；`/metrics` 需要自己接 Prometheus；沒有 Jaeger UI 截圖（開發機瀏覽器 pane 無法 compositing），改用 commit 進 repo 的 trace JSON 當證據
+- 日誌只輸出到 stdout；`/metrics` 需要自己接 Prometheus；沒有 Jaeger UI 截圖（開發機瀏覽器 pane 無法 compositing），改用 commit 進 repo 的 trace JSON 當證據。各儲存面的 persistence/retention 責任見 [SECURITY.md](SECURITY.md)
 
 **模型與資料**
 

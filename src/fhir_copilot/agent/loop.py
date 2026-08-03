@@ -180,7 +180,7 @@ def _log_provider_unavailable(call: str, exc: BaseException) -> None:
     真實跑端到端取樣時撞到 3/30 拒答,只能從時間戳反推是逾時還是別的,
     那不是可觀測性,那是考古。**拒答是預期內的行為,但「為什麼」不是。**
 
-    只記例外的類別與訊息:那是 provider SDK 的錯誤,不含病患資料。
+    SDK exception message 是不受控文字,可能包含 request/response 內容,因此不記原文。
     """
     cause = exc.__cause__ or exc.__context__
     logger.warning(
@@ -188,7 +188,7 @@ def _log_provider_unavailable(call: str, exc: BaseException) -> None:
         extra={
             "call": call,
             "error_type": type(cause).__name__ if cause else type(exc).__name__,
-            "error_message": str(cause) if cause else str(exc),
+            "refusal_reason": RefusalReason.PROVIDER_UNAVAILABLE.value,
         },
     )
 
@@ -269,9 +269,11 @@ def answer_question(
         if out_of_scope is not None:
             logger.info(
                 "模型宣告問題超出工具涵蓋範圍",
-                # 這是模型對「缺什麼」的描述,不是病患欄位。留著是為了知道
-                # 使用者實際在問哪些查不到的東西——那是下一個工具該做什麼的證據。
-                extra={"missing_information": out_of_scope},
+                # 這段完全由模型控制,可能回顯 question 或工具資料,只留形狀。
+                extra={
+                    "missing_information_present": bool(out_of_scope),
+                    "missing_information_length": len(out_of_scope),
+                },
             )
             return _refuse(
                 model_id=provider.model_id,

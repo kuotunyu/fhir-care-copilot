@@ -23,9 +23,11 @@
 
 | 資料 | 處置 |
 |---|---|
-| `patient_id` | sha256 取前 8 碼。夠用來把同一位病患的日誌串起來，反推不回原值 |
+| `patient_id` | process-local random key 的 HMAC 短參考。同一 process 可關聯；公開 patient id 清單不足以離線重算 |
 | `question`、`note_text` | **只記長度**。使用者可能在自由文字裡打進任何東西 |
 | 病患姓名、性別、生日 | **完全不記**。工具回傳值整包不進日誌，只記「呼叫了哪個工具、成功與否、幾筆 evidence」 |
+| model-controlled text／provider exception message | **不記原文**。只記是否存在、長度、call stage、exception type 與固定 refusal reason |
+| `X-Request-ID` | 僅接受 `[A-Za-z0-9._-]{1,64}`；其他值由 server 以 UUID 取代後才進 header/log/trace/audit |
 
 黑名單（「把姓名遮掉」）永遠會漏，因為列不完所有會出現姓名的地方。
 
@@ -111,8 +113,11 @@ scrape 是每 15 秒一次的自動流量。套上 API key 認證與限流會直
   已改用 commit 進 repo 的 trace JSON 當證據，並實測驗證過 Jaeger 真的收得到
   （service 列表出現 `fhir-care-copilot`、trace 查詢回傳 5 個 span 且父子關係正確）。
 - 日誌目前只有 stdout。集中式日誌收集不在這個 Phase 的範圍。
-- `patient_id` 的雜湊沒有加 salt。對合成資料而言足夠；若換成真實資料，
-  已知 id 集合可以被暴力反查，那時需要 salt 或改用不可逆的對照表。
+- `patient_id` pseudonym 的 HMAC key 是 process-local random key，不跨 restart／worker
+  穩定。這是刻意限制關聯範圍；若部署需要跨 process 關聯，必須由受控 secret manager
+  提供 deployment key，不能把 key 寫進 repo。
+- 本專案不實作 retention scheduler；各儲存面的預設 persistence 與刪除責任集中列在
+  [`SECURITY.md`](../../SECURITY.md)。
 
 ## 後果
 

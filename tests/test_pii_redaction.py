@@ -12,6 +12,7 @@ fixture 病患是 ``Amy002 Fixture001``(id ``a1000000-...``),值取自
 ``tests/data/fixtures``,不是寫死的假值——如果 fixture 換人,斷言跟著換。
 """
 
+import hashlib
 import json
 import logging
 from collections.abc import Iterator
@@ -141,6 +142,14 @@ class TestUsefulThingsStillGetLogged:
     def test_hashed_patient_reference_is_present(self, capture: Captured) -> None:
         """同一位病患的多筆日誌要串得起來,否則出事時查不動。"""
         assert hash_patient_id(AMY_ID) in capture.everything
+
+    def test_patient_reference_is_keyed_not_plain_sha256(self) -> None:
+        legacy = hashlib.sha256(AMY_ID.encode("utf-8")).hexdigest()[:8]
+
+        first = hash_patient_id(AMY_ID)
+
+        assert first == hash_patient_id(AMY_ID)
+        assert first != legacy
 
     def test_question_length_is_recorded(self, capture: Captured) -> None:
         """只記形狀不記內容:長度足以看出「有沒有人在打超長輸入」。"""

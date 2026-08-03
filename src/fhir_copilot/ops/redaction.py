@@ -9,8 +9,8 @@
 
 三條具體規則:
 
-- ``patient_id`` → 雜湊後取前 8 碼。夠用來把同一個病患的多筆日誌串起來,
-  但反推不回原值,也對不上 FHIR 資源
+- ``patient_id`` → process-local secret key 的 HMAC 短參考。同一 process 可關聯,
+  但公開 patient id 清單不足以離線重算
 - 使用者輸入(``question``)與 ``note_text`` → **只記長度**,永不記內容。
   使用者可能在自由文字裡打進任何東西
 - 病患姓名、性別、生日等 → **完全不記**。工具回傳值整包不進日誌,
@@ -23,19 +23,26 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import secrets
 
-_HASH_PREFIX_LEN = 8
+_HASH_PREFIX_LEN = 12
+_PROCESS_PSEUDONYM_KEY = secrets.token_bytes(32)
 
 
 def hash_patient_id(patient_id: str) -> str:
-    """把 ``patient_id`` 換成穩定但不可反推的短雜湊。
+    """把 ``patient_id`` 換成同一 process 內穩定的 keyed pseudonym。
 
-    同一個 id 一定得到同一個值(可以串起同一位病患的多筆日誌),
-    但拿到雜湊反推不回 id,也查不到對應的 FHIR 資源。
+    預設 key 每次 process 啟動時隨機產生,不寫入 repo。這讓公開 patient id 清單
+    無法直接重算 pseudonym;代價是不同 process/restart 之間不能靠它做關聯。
     """
     if not patient_id:
         return "unknown"
-    digest = hashlib.sha256(patient_id.encode("utf-8")).hexdigest()
+    digest = hmac.new(
+        _PROCESS_PSEUDONYM_KEY,
+        patient_id.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
     return digest[:_HASH_PREFIX_LEN]
 
 

@@ -8,6 +8,7 @@ import pytest
 from fhir_copilot.agent.loop import _dedupe_evidence, answer_question
 from fhir_copilot.agent.response import RefusalReason
 from fhir_copilot.config import Guardrails, load_pricing
+from fhir_copilot.ops.resilience import ProviderUnavailableError
 from fhir_copilot.providers.base import ProviderStep, RequestedToolCall, ToolCallOutcome
 from fhir_copilot.providers.mock import MockProvider
 from fhir_copilot.store import LocalBundleFHIRStore
@@ -118,6 +119,9 @@ class _OutOfScopeProvider:
 
     model_id = "mock-deterministic"
 
+    def __init__(self, missing_information: str = "保險給付範圍") -> None:
+        self._missing_information = missing_information
+
     def start(
         self, *, system_prompt: str, user_message: str, tool_specs: Sequence[Any]
     ) -> ProviderStep:
@@ -125,7 +129,7 @@ class _OutOfScopeProvider:
         call = RequestedToolCall(
             call_id="c",
             tool_name="report_out_of_scope",
-            arguments={"missing_information": "保險給付範圍"},
+            arguments={"missing_information": self._missing_information},
         )
         return ProviderStep(
             state=None, tool_calls=(call,), final_answer=None, input_tokens=40, output_tokens=8
@@ -228,6 +232,76 @@ class TestReportOutOfScope:
                 assert spec.description in sentence
             else:
                 assert spec.description not in sentence
+
+    def test_model_controlled_missing_information_is_logged_as_shape_only(
+        self,
+        store: LocalBundleFHIRStore,
+        guardrails: Guardrails,
+        pricing: dict[str, Any],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        secret = f"Amy002 asked: {AMY_ID} 的完整問題"
+
+        with caplog.at_level("INFO", logger="fhir_copilot.agent.loop"):
+            answer_question(
+                provider=_OutOfScopeProvider(secret),
+                store=store,
+                patient_id=AMY_ID,
+                question="測試問題",
+                guardrails=guardrails,
+                pricing=pricing,
+            )
+
+        assert secret not in caplog.text
+        record = next(r for r in caplog.records if r.message == "模型宣告問題超出工具涵蓋範圍")
+        assert vars(record)["missing_information_present"] is True
+        assert vars(record)["missing_information_length"] == len(secret)
+        assert not hasattr(record, "missing_information")
+
+
+class _UnavailableProvider:
+    model_id = "mock-deterministic"
+
+    def __init__(self, secret: str) -> None:
+        self._secret = secret
+
+    def start(
+        self, *, system_prompt: str, user_message: str, tool_specs: Sequence[Any]
+    ) -> ProviderStep:
+        del system_prompt, user_message, tool_specs
+        raise ProviderUnavailableError(self._secret)
+
+    def continue_with_tool_results(
+        self, state: Any, outcomes: Sequence[ToolCallOutcome]
+    ) -> ProviderStep:  # pragma: no cover - start 已失敗
+        raise AssertionError("不該走到這裡")
+
+
+def test_provider_exception_message_is_not_logged(
+    store: LocalBundleFHIRStore,
+    guardrails: Guardrails,
+    pricing: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = f"SDK response leaked {AMY_ID} Amy002"
+
+    with caplog.at_level("WARNING", logger="fhir_copilot.agent.loop"):
+        result = answer_question(
+            provider=_UnavailableProvider(secret),
+            store=store,
+            patient_id=AMY_ID,
+            question="測試問題",
+            guardrails=guardrails,
+            pricing=pricing,
+        )
+
+    assert result.refusal_reason is RefusalReason.PROVIDER_UNAVAILABLE
+    assert secret not in caplog.text
+    record = next(r for r in caplog.records if r.message == "provider 不可用,轉為結構化拒答")
+    assert vars(record)["call"] == "start"
+    assert vars(record)["error_type"] == "ProviderUnavailableError"
+    assert vars(record)["refusal_reason"] == RefusalReason.PROVIDER_UNAVAILABLE.value
+    assert not hasattr(record, "error_message")
 
 
 class TestRefusalReason:

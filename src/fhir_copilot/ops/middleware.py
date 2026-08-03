@@ -10,6 +10,7 @@ middleware 會讓每個請求多繞兩層 ASGI,而且 span 與日誌的 request 
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -24,10 +25,18 @@ from fhir_copilot.ops.metrics import Metrics
 from fhir_copilot.ops.tracing import get_tracer
 
 REQUEST_ID_HEADER = "X-Request-ID"
+_REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}", flags=re.ASCII)
 
 logger = logging.getLogger(__name__)
 
 _UNMATCHED_ROUTE = "unmatched"
+
+
+def normalize_request_id(value: str | None) -> str:
+    """只沿用有限 ASCII request id;其餘以 server UUID 取代。"""
+    if value is not None and _REQUEST_ID_PATTERN.fullmatch(value):
+        return value
+    return uuid.uuid4().hex
 
 
 def _route_template(request: Request) -> str:
@@ -49,8 +58,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        # 沿用呼叫端帶進來的 id(可跨服務串起同一條鏈),沒有就自己產生一個
-        request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        # 合法 id 可跨服務串鏈;任意文字不得被反射到 log/trace/header/audit。
+        request_id = normalize_request_id(request.headers.get(REQUEST_ID_HEADER))
         set_request_id(request_id)
 
         method = request.method
