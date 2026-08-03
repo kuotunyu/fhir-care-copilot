@@ -71,6 +71,25 @@ class TestIndex:
         assert summaries[0].source_file == "a_first.json"
         assert summaries[0].name == "X First"
 
+    def test_duplicate_warning_omits_patient_id_and_filename(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        patient_id = "synthetic-sensitive-patient-id"
+        second_filename = "b_synthetic_sensitive_name.json"
+        (tmp_path / "a_first.json").write_text(
+            json.dumps(_minimal_patient_bundle(patient_id, "First", "Synthetic")), encoding="utf-8"
+        )
+        (tmp_path / second_filename).write_text(
+            json.dumps(_minimal_patient_bundle(patient_id, "Second", "Synthetic")), encoding="utf-8"
+        )
+
+        with caplog.at_level("WARNING", logger="fhir_copilot.store.local"):
+            LocalBundleFHIRStore(tmp_path)
+
+        assert "重複的病患 Patient.id" in caplog.text
+        assert patient_id not in caplog.text
+        assert second_filename not in caplog.text
+
 
 class TestGetPatient:
     def test_returns_patient_resource(self, store: LocalBundleFHIRStore) -> None:

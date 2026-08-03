@@ -74,7 +74,7 @@ class LocalBundleFHIRStore:
                 logger.warning("跳過缺少 Patient.id 的檔案:%s", path.name)
                 continue
             if patient_id in self._files:
-                logger.warning("重複的病患 id %s(%s),保留先前的檔案", patient_id, path.name)
+                logger.warning("重複的病患 Patient.id,保留先前的檔案")
                 continue
             self._files[patient_id] = path
             self._summaries[patient_id] = PatientSummary(
