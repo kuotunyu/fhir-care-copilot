@@ -13,6 +13,12 @@ RELEASE_VERSION = "0.2.0"
 RELEASE_DATE = "2026-08-03"
 
 
+def test_ci_workflow_uses_read_only_token_permissions() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+
+    assert workflow["permissions"] == {"contents": "read"}
+
+
 def test_package_and_citation_release_metadata_match() -> None:
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     citation = yaml.safe_load((REPO_ROOT / "CITATION.cff").read_text(encoding="utf-8"))

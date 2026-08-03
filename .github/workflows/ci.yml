@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     # 開發在 Windows、部署在 Linux,兩邊都要綠。Windows 專屬問題(路徑分隔、
