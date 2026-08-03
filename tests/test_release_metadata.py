@@ -9,8 +9,8 @@ import yaml
 from fhir_copilot import __version__ as runtime_version
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RELEASE_VERSION = "0.2.0"
-RELEASE_DATE = "2026-08-03"
+RELEASE_VERSION = "0.2.1"
+RELEASE_DATE = "2026-08-04"
 
 
 def test_ci_workflow_uses_read_only_token_permissions() -> None:
