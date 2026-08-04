@@ -6,9 +6,9 @@
 
 ## 背景
 
-M0–M7 交付的是「能跑的服務」：FastAPI 7 端點、React 工作台、Docker、128 個測試。
+M0–M7 交付的是「能跑的服務」：FastAPI、React 工作台、Docker 與基礎測試。
 它缺的是營運層——認證、限流、可觀測性、韌性、稽核持久化，一個都沒有。
-`/api/chat` 是完全開放的，而它每次呼叫都花真錢。
+`/api/chat` 當時完全開放；設定 external provider 時，每次呼叫都可能消耗付費額度。
 
 補這一層有一個明顯的失敗模式：照著「生產級服務該有什麼」的清單一路加下去，
 最後得到一個掛著 Postgres、Redis、OTel、Grafana 的展示應用，而每一項都講不出
@@ -23,7 +23,7 @@ M0–M7 交付的是「能跑的服務」：FastAPI 7 端點、React 工作台�
 
 | 事實 | 推導出的控制 | Phase |
 |---|---|---|
-| `/api/chat` 每次呼叫都花真錢，而端點完全開放 | API key 認證、每 key 限流、每日預算上限 | 1 |
+| `/api/chat` 在 external-provider 模式可能消耗付費額度，而端點當時完全開放 | API key 認證、每 key 限流、每日預算上限 | 1 |
 | 日誌與 trace 會經手病患資料 | 結構化日誌的 PII 遮蔽、trace redaction | 2 |
 | 會寫照護記錄的稽核日誌 | 可信任的稽核軌跡 | 4 |
 
@@ -75,32 +75,33 @@ catch 掉當成 0 元，預算上限就變成裝飾品——正好是這份 ADR 
 監控會在服務還活著的時候誤報死亡。用 middleware 就得維護一份路徑白名單，
 而且要跟 `StaticFiles` 的 mount 順序打架。
 
-### 為什麼前端的 key 是 UI 輸入 + localStorage，不是 build-time env
+### 為什麼前端的 API key 是 UI 輸入 + 頁面記憶體，不是持久化或 build-time env
 
-build-time env 會把金鑰烤進公開的 JS bundle，任何人打開 devtools 都讀得到——
-對一個以安全紀律為賣點的專案是自相矛盾的。localStorage 並沒有比較「安全」
-（同源指令碼一樣讀得到），但它誠實：金鑰是這個瀏覽器的使用者自己提供的，
-不是我們發佈出去的。
+build-time env 會把 API key 烤進公開的 JS bundle，任何人打開 devtools 都讀得到。
+目前前端只把使用者輸入的 API key 保留在 module memory，不寫入 `localStorage`、
+`sessionStorage` 或 cookie；重新整理或關閉頁面後即清除。這避免跨頁面生命週期留存，
+但同源 XSS 仍可能在頁面開啟期間讀取應用程式狀態或攔截請求。
 
 ### 三種降級行為
 
-沿用「provider 缺金鑰自動退回 mock」的哲學——**不要讓服務因為少一個環境變數就起不來**，
+沿用「provider 缺 API key 自動退回 mock」的哲學——**不要讓服務因為少一個環境變數就起不來**，
 但要在 `/api/health` 誠實標明現在少了什麼保護：
 
 | 情況 | 行為 |
 |---|---|
 | 沒設定任何 API key | 認證層等於關閉，一律當 `anonymous` 放行 |
-| 有設定金鑰，但請求帶了錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
-| `REQUIRE_AUTH=true` 但沒有任何金鑰 | **Fail closed**。這是設定矛盾，fail open 等於「以為有保護，其實沒有」 |
+| 有設定 API key，但請求帶了錯的 | 401。呼叫者顯然想認證，默默降級只會讓人搞不清楚狀況 |
+| `REQUIRE_AUTH=true` 但沒有任何 API key | **Fail closed**。這是設定矛盾，fail open 等於「以為有保護，其實沒有」 |
 
-**限流與預算不管有沒有開認證都生效**——demo mode 一樣會花錢。
+**限流與預算不管有沒有開認證都生效**——未開認證不代表外部 provider 不會產生成本；
+`mock` provider 本身不呼叫付費 API。
 
 ## 已知限制（誠實記錄）
 
 - 預算計數在記憶體，重啟即歸零。`/api/health` 回報 `budget_counting_since`，
   讓看的人知道這個數字是從什麼時候開始算的。持久化留給 Phase 4。
 - 限流是單實例的（見上）。
-- 前端的 `localStorage` 金鑰對同源的 XSS 沒有防護力。這個服務沒有使用者產生的
+- 頁面記憶體中的 API key 對同源 XSS 沒有防護力。這個服務目前沒有使用者產生的
   HTML 內容，但這不是一個可以永遠成立的假設。
 
 ## 後果

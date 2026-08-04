@@ -93,9 +93,11 @@ ResilientProvider(InstrumentedProvider(真正的 provider))
 - **熔斷器是單一 process 的記憶體狀態**。多實例部署時每個實例各自判斷，
   provider 掛掉時每個實例都要先各自失敗 N 次才會熔斷。與限流是同一類限制。
 - `is_retryable` 用關鍵字比對，會誤判。目前沒有 provider 專屬的錯誤分類。
-- **沒有量測熔斷在真實負載下的行為**。故障注入的驗證是單元與整合測試層級的；
-  「provider 掛掉時 threadpool 不會被佔滿」這個命題還沒有負載測試數字支持，
-  留給 Phase 5 的故障注入場景表。
+- 已有一次以 mock provider、單一 uvicorn worker 執行的固定併發故障注入：48 個 chat
+  workers 搭配 5 req/s health probe。持續失敗場景的 health p95/p99 為 126/1,886 ms；
+  不開熔斷的 3 秒慢 provider 對照為 5,775/5,978 ms。原始條件與五個場景保存在
+  [`reports/loadtest/fault-injection-20260725.md`](../../reports/loadtest/fault-injection-20260725.md)。
+  這只支持該次 mock、單機測試條件下的資源隔離，不代表真實 provider、網路或多實例部署。
 - 逾時只在 SDK 層。如果 SDK 本身有 bug 導致不遵守 timeout，這一層擋不住。
 
 ## 後果

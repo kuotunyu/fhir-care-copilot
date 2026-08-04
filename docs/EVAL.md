@@ -123,9 +123,9 @@ uv run python scripts/run_eval.py --provider gemini --full-eval --pace-seconds 1
 uv run python scripts/generate_model_comparison.py reports/eval_gemini_full.json reports/eval_openai_full.json reports/eval_openai_nano_full.json --out reports/model_comparison_full.md
 ```
 
-金鑰只從環境變數來，**專案裡沒有任何程式自動讀 `.env`**（刻意的），
+Provider API key 只從環境變數來，**專案裡沒有任何程式自動讀 `.env`**（刻意的），
 直接跑真 provider 會得到 `RuntimeError: GEMINI_API_KEY 未設定`。
-CI 與 Docker 走 mock provider，不需要金鑰。
+CI 與 Docker 走 mock provider，不需要 API key。
 
 ### 速率限制
 
@@ -133,7 +133,7 @@ CI 與 Docker 走 mock provider，不需要金鑰。
 每題至少 2 次 API 呼叫（工具呼叫 + 最終回答），全量 220 題需要 440 次，
 沒有 pacing 幾乎一定撞 429。`--pace-seconds 10` 是實測可行的保守值。
 
-配額是 **per project**。同一個帳號在不同專案開的金鑰各有各的額度，
+配額是 **per project**。同一個帳號在不同專案開的 API key 各有各的額度，
 但**專案一旦連上帳單帳戶就會變成付費層，而付費層沒有免費額度**——
 額度歸零的付費專案比免費層更糟。OpenAI 沒觀察到類似限制，不需要 pacing。
 

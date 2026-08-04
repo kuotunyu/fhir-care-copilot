@@ -26,7 +26,10 @@ FHIR Care Copilot 是作品級展示專案：以 LLM agent 查詢長照個案的
 ### 3. LLM 與資料的隔離
 
 - LLM 看不到資料庫、看不到原始 bundle；只看到工具回傳的 schema 化結果
-- 每個病患事實必附 `evidence[]`（FHIR resourceType/id）；無證據的敘述視為 unsupported claim（eval 指標之一）
+- 資料工具回傳 `evidence[]`（FHIR `resourceType/id`）；reference integrity 只驗證已回傳的
+  reference 存在於該次使用的 store，evidence coverage 另行計數
+- Reference 存在不代表自然語言回答已逐句 grounded；目前沒有完整的 claim-level
+  unsupported-claim detection，也不以此宣稱回答具有臨床正確性
 - 資料不足、超出工具能力 → 結構化拒答（`refused: true`），不得靠模型記憶補答
 
 ### 4. Prompt injection 邊界
@@ -50,9 +53,9 @@ FHIR Care Copilot 是作品級展示專案：以 LLM agent 查詢長照個案的
 
 | 威脅 | 資產 | 對策 |
 |---|---|---|
-| 模型幻覺病患事實 | 回答正確性 | 工具強制 + evidence 必附 + unsupported-claim eval |
+| 模型幻覺病患事實 | 回答正確性 | 工具強制 + evidence references + reference-integrity eval；不宣稱 claim-level grounding |
 | Prompt injection(資料/輸入夾帶指令) | 越權行為、輸出污染 | §4;write 工具不存在,injection eval |
-| API key 洩漏 | 金鑰 | .env gitignore、Space Secrets、pre-commit detect-private-key |
+| API key 洩漏 | API key value | `.env` gitignore、Space Secrets、pre-commit detect-private-key |
 | 誤把輸出當醫療建議 | 使用者安全 | UI 與文件明示非診斷工具;拒答機制 |
 | 成本失控 | API 帳單 | 預算守門、cost badge、mock provider |
 

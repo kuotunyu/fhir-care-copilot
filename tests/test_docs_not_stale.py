@@ -63,3 +63,21 @@ def test_the_check_scans_something() -> None:
     """
     assert len(list((REPO_ROOT / "scripts").glob("*.py"))) >= 10
     assert len(list((REPO_ROOT / "configs").glob("*.yaml"))) >= 3
+
+
+def test_public_mock_deploy_instructions_remove_external_provider_state() -> None:
+    """公開 mock 重發必須能覆蓋舊 provider,並移除已知 external API keys。"""
+    deploy = (REPO_ROOT / "docs" / "DEPLOY.md").read_text(encoding="utf-8")
+    public_mock = deploy.split("## 建議的公開作品集模式", 1)[1].split(
+        "## 選配的私人 external-provider 模式", 1
+    )[0]
+
+    assert "--set-secret FHIR_COPILOT_PROVIDER=mock" in public_mock
+    for name in (
+        "GEMINI_API_KEY",
+        "GEMINI_API_KEY_BACKUP",
+        "GEMINI_API_KEY_BACKUP2",
+        "GEMINI_API_KEY_BACKUP3",
+        "OPENAI_API_KEY",
+    ):
+        assert f"--unset-secret {name}" in public_mock

@@ -17,4 +17,4 @@
 `src/fhir_copilot/api/routes.py` 上掛了哪個 dependency。設定檔與程式碼各說各話時，
 沒有人知道哪一份才算數。
 
-**金鑰永遠不進這些檔案**，只從環境變數來（見 `.env.example`）。
+**API key 永遠不進這些檔案**，只從環境變數來（見 `.env.example`）。
