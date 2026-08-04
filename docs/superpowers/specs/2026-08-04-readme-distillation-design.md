@@ -17,7 +17,7 @@ the UI, weaken the synthetic/non-clinical boundary, or claim clinical readiness.
 
 ## 2. Editorial target
 
-- Reduce the README from 242 lines to approximately 140–170 lines; 180 lines is the hard ceiling.
+- Reduce the README from 374 lines to approximately 140–170 lines; 180 lines is the hard ceiling.
 - Keep no more than eight top-level sections and avoid nested sections unless needed for clarity.
 - Use short paragraphs, one compact security table, one compact evidence summary, and one quick-start
   block.
