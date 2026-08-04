@@ -1,7 +1,7 @@
 # FHIR Care Copilot README Distillation Design
 
 Date: 2026-08-04
-Status: proposed
+Status: approved
 Working branch: `codex/readme-distill`
 Baseline: `v0.2.1` at `46b85339b71191f9e9459944d2dd1afad18a45a9`
 
@@ -17,7 +17,7 @@ the UI, weaken the synthetic/non-clinical boundary, or claim clinical readiness.
 
 ## 2. Editorial target
 
-- Reduce the README from 374 lines to approximately 140–170 lines; 180 lines is the hard ceiling.
+- Reduce the README from 242 lines to approximately 140–170 lines; 180 lines is the hard ceiling.
 - Keep no more than eight top-level sections and avoid nested sections unless needed for clarity.
 - Use short paragraphs, one compact security table, one compact evidence summary, and one quick-start
   block.
@@ -31,7 +31,8 @@ The rewritten README will use this order:
 
 1. Title, existing status badges, one-sentence positioning, and an immediate synthetic/non-clinical
    disclosure.
-2. Three primary links only: live demo, latest release, and case study.
+2. Three primary review links: live demo, the existing 75-second demo video, and case study. The
+   latest release remains available through the existing release badge.
 3. `為什麼值得看`: three bullets covering server-injected patient scope, verifiable FHIR
    references, and PII-safe/reproducible operations.
 4. One existing product screenshot, embedded without a standalone screenshot section or an
@@ -45,7 +46,7 @@ The rewritten README will use this order:
 ## 4. Link and media budget
 
 - Retain only links that materially help a reviewer decide whether to inspect or run the project.
-- Allow at most seven prose/documentation links: live demo, latest release, case study, model card,
+- Allow at most seven prose/documentation links: live demo, demo video, case study, model card,
   data card, security policy, and license. Badge targets are excluded from this count.
 - Do not link individual tests, evaluations, reports, workflows, ADRs, scripts, or screenshots from
   the README.
