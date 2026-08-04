@@ -87,7 +87,7 @@ semantics constrain what a returned reference proves. None substitutes for the o
 
 - Backend evidence is exercised by the committed pytest suite across tool schemas, patient-scope
   injection, authentication, rate limits, budgets, resilience, PII redaction, and audit integrity.
-- Frontend evidence includes 35 Vitest tests for API behavior, status disclosure, and chat errors;
+- Frontend evidence includes 38 Vitest tests for API behavior, status disclosure, and chat errors;
   it is targeted component evidence rather than full visual or end-to-end UI coverage.
 - Provider artifacts preserve three historical 220-case paid-provider runs, transcripts, metric
   provenance, and known evaluator limits; they were not rerun or relabeled for this README.
