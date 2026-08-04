@@ -20,7 +20,7 @@ def test_registry_has_exactly_six_patient_data_tools() -> None:
 
     2026-07-27 五 → 六:新增 ``list_allergies``。這次**資料出口真的多了一個**,
     理由是產品缺口而不是 eval 需要——一個查得到用藥、查不到過敏的照護助理,
-    在「不能給他什麼」這個問題上是有洞的。決策見 docs/PROGRESS.md 當日紀錄。
+    在「不能給他什麼」這個問題上是有洞的。安全邊界仍由 ADR 0001 與本測試鎖定。
     """
     data_tools = [spec for spec in READ_ONLY_TOOLS if spec.queries_patient_data]
     assert len(data_tools) == 6

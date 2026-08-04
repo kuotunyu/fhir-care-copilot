@@ -15,6 +15,15 @@ production healthcare system。以下矩陣描述應用程式本身的 persisten
 - Public demo 的資料政策是 Synthea-only；程式可設定其他 FHIR data directory，所以這是
   repository／deployment policy，不是自動辨識或阻擋真實資料的 architecture guarantee。
 
+### Browser API key lifetime
+
+- 前端只把使用者輸入的 API key 保留在目前頁面的記憶體；不寫入 `localStorage`、
+  `sessionStorage` 或 cookie，重新整理或關閉頁面後即清除。
+- 舊版可能留下的 `localStorage` 項目會在模組初始化時以 best effort 移除；前端不會讀取
+  或沿用該值，也不會把 API key 放進 build-time bundle。
+- 這項設計縮短瀏覽器端留存時間，但不是 XSS 防護。同源惡意程式碼仍可能在頁面開啟期間
+  讀取應用程式狀態或攔截帶有 API key 的請求。
+
 ## Log, trace and audit retention matrix
 
 | 儲存面 | 應用程式是否持久化 | Demo 預設 | 保留／刪除責任 |

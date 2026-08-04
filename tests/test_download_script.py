@@ -1,6 +1,6 @@
 """scripts/download_or_generate_synthea.py 的純邏輯單元測試(M1 審查發現的
-4 個穩健性 bug 的迴歸測試)。不測真實網路下載——那已在 M1 用真實下載驗證過
-(見 docs/PROGRESS.md)。
+4 個穩健性 bug 的迴歸測試)。不測真實網路下載;資料來源、checksum 與離線再現方式
+記錄在 DATA_CARD.md。
 """
 
 from __future__ import annotations

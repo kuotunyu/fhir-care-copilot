@@ -1,7 +1,8 @@
-"""5 個唯讀工具共用的型別與輔助函式。
+"""唯讀工具共用的型別與輔助函式。
 
-安全邊界(ADR 0001):所有工具皆唯讀;回傳值必附 ``evidence``(FHIR
-resourceType/id),供回答附上可追溯來源、供 eval 驗證 citation validity。
+安全邊界(ADR 0001):所有工具皆唯讀。病患資料工具回傳 ``evidence``(FHIR
+resourceType/id)供 reference-integrity 檢查;``report_out_of_scope`` 不查資料,
+因此刻意回傳空 evidence。Reference 存在不代表回答已逐句 grounded。
 
 「查無資料」語意區分兩種情況:
 - ``ok=False``:工具**無法**回答(如病患 id 不存在)→ 結構化錯誤,不是空 list 混過去

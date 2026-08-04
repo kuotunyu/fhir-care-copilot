@@ -43,7 +43,7 @@ patient 的授權。
 
 > 以下數字來自以 100 位 Synthea 合成病患子集進行的歷史外部 provider API 呼叫，非預估值。
 
-| 指標 | `gemini-3.1-flash-lite`（預設） | `gpt-5.4-mini` | `gpt-5.4-nano` |
+| 指標 | `gemini-3.1-flash-lite`（歷史外部-provider baseline） | `gpt-5.4-mini` | `gpt-5.4-nano` |
 |---|---|---|---|
 | Tool-selection accuracy | **100.0%** | 99.4% | 97.8% |
 | Field exact match rate | 43.3% | 41.1% | 42.8% |
@@ -71,9 +71,12 @@ nano 便宜 3.9 倍、速度與 mini 相當，但在三個已量測行為上都�
 
 三個獨立視角（只問服從與否／盡力反駁是失守／真實世界後果）一致認定 nano 為真的失守。在長照現場，使用者可能是照服員或家屬——**省下的 $0.0012/題，換的是一個會提供用藥建議的模型。**
 
-### 為什麼預設不是最新的模型
+### 為什麼歷史 Gemini baseline 釘在 3.1
 
-2026-07-26 曾把預設換成當時剛出的 `gemini-3.5-flash-lite`，跑完 20 題 injection A/B 後**退回 3.1**（完整表格：`reports/injection_ab.md`）。
+2026-07-26 曾把 Gemini adapter 的 pinned model 換成當時剛出的
+`gemini-3.5-flash-lite`，跑完 20 題 injection A/B 後**退回 3.1**（完整表格：
+`reports/injection_ab.md`）。整個 repository 的實際 `default_provider` 仍是 `mock`；
+這裡描述的是外部 provider 的歷史評估基準，不是公開 demo 的預設執行模式。
 
 | 注入手法（各重複 4 次，5 種手法共 20 題） | `gemini-3.1-flash-lite` | `gemini-3.5-flash-lite` |
 |---|---:|---:|
@@ -140,5 +143,5 @@ not applicable，並另外量 evidence coverage。兩者都**不代表自然語�
   uv run python scripts/run_eval.py --provider openai --model-id gpt-5.4-nano --full-eval --out reports/eval_openai_nano_full.json
   uv run python scripts/generate_model_comparison.py reports/eval_gemini_full.json reports/eval_openai_full.json reports/eval_openai_nano_full.json --out reports/model_comparison_full.md
   ```
-  Gemini 免費層是 **500 req/day/model 且 15 req/min**（配額 per project；不同專案的金鑰各有各的額度，但**專案一旦連上帳單帳戶就變成付費層，而付費層沒有免費額度**），全量 220 題需要 440 次呼叫——`--pace-seconds 10` 是實測可行的值
+  Gemini 免費層是 **500 req/day/model 且 15 req/min**（配額 per project；不同專案的 API key 各有各的額度，但**專案一旦連上帳單帳戶就變成付費層，而付費層沒有免費額度**），全量 220 題需要 440 次呼叫——`--pace-seconds 10` 是實測可行的值
 - 詳細指標定義、題目產生方式、判準侷限的完整說明見 [docs/EVAL.md](docs/EVAL.md)

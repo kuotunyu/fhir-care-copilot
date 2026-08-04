@@ -6,8 +6,9 @@
 
 ## 背景
 
-工作台的使用情境是「先選病患、再對話」（前端的「病患選擇器」）。5 個唯讀
-工具（M2）為了可獨立測試，input schema 都保留 `patient_id: str` 欄位。到了
+工作台的使用情境是「先選病患、再對話」（前端的「病患選擇器」）。目前 allowlist
+包含 6 個唯讀資料工具與 1 個不查資料的 `report_out_of_scope`；為了可獨立測試，
+它們的 input schema 都保留 `patient_id: str` 欄位。到了
 M3 串上 LLM 之後，出現一個具體問題：**工具呼叫的 `patient_id` 這個值，最終
 應該由誰決定？**
 
@@ -46,7 +47,7 @@ test_llm_cannot_smuggle_a_different_patient_id_via_tool_arguments`）：
 
 ## 影響範圍
 
-- M2 的 5 個工具 input model **不變**（保留 `patient_id`，維持可獨立測試、
+- 目前 7 個 allowlisted tools 的 input model **不變**（保留 `patient_id`，維持可獨立測試、
   可直接程式化呼叫的能力）——只有「LLM 看到的 schema」與「LLM 能填的值」
   被限制,工具本身的介面不受影響。
 - M3 的 `answer_question()` 簽章因此明確要求呼叫端傳入 `patient_id`

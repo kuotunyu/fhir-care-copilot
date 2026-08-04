@@ -90,7 +90,7 @@ provider 呼叫的 span 由 `ops/instrumented_provider.py` 在外面包——`Pr
 ### 8. `/metrics` 不套 Phase 1 的守門
 
 scrape 是每 15 秒一次的自動流量。套上 API key 認證與限流會直接把它打壞——
-不只是要帶金鑰的問題，還會被限流當成異常流量擋掉。
+不只是要帶 API key 的問題，還會被限流當成異常流量擋掉。
 
 但完全開放會讓任何人看到當日花費與流量，所以留一個**可選的** `FHIR_COPILOT_METRICS_TOKEN`：
 沒設就開放（demo 預設，維持「少一個環境變數也能跑」），有設才要求 Bearer token。

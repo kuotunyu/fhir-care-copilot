@@ -391,6 +391,7 @@ class TestUploadSet:
         (repo / ".superpowers-public").mkdir(parents=True)
         (repo / "README.md").write_text("# Public README\n", encoding="utf-8")
         (repo / "docs" / "public" / "guide.md").write_text("public\n", encoding="utf-8")
+        (repo / "docs" / "PROGRESS.md").write_text("private\n", encoding="utf-8")
         (repo / ".superpowers" / "sdd" / "progress.md").write_text("private\n", encoding="utf-8")
         (repo / ".superpowers" / "sdd" / "nested" / "scratch.md").write_text(
             "private\n", encoding="utf-8"
@@ -411,6 +412,7 @@ class TestUploadSet:
         for paths in (uploaded, staged):
             assert not [path for path in paths if path.startswith(".superpowers/")]
             assert not [path for path in paths if path.startswith("docs/superpowers/")]
+            assert "docs/PROGRESS.md" not in paths
 
     def test_synthea_data_is_not_uploaded(self) -> None:
         """病患資料在 image build 時才下載,不進 repo 也不進 Space。"""
