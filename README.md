@@ -30,26 +30,20 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as React 前端 UI
-    participant Gateway as FastAPI 網關
-    participant Orchestrator as Agent Orchestrator
+    participant App as API Gateway / UI
+    participant Agent as Agent Orchestrator
     participant Model as LLM Provider
-    participant Tools as 唯讀 Tool Registry
-    participant FHIR as FHIRStore (Synthea)
+    participant Tools as Tool Registry / FHIR
 
-    UI->>Gateway: POST /api/chat (patient_id, question)
-    Gateway->>Orchestrator: 初始化 Agent Session (帶入認證)
-    Orchestrator->>Model: 發送提問與許可工具清單
-    Model-->>Orchestrator: 工具調用請求 (如 get_conditions)
-    Note over Orchestrator,Tools: 伺服器端強制注入 patient_id<br/>覆寫模型可能產生之參數，防範越權讀取
-    Orchestrator->>Tools: 派送工具 (Strict Pydantic Schema)
-    Tools->>FHIR: 檢索 Resource (patient_id, resourceType)
-    FHIR-->>Tools: 回傳 Synthea FHIR R4 Bundle
-    Tools-->>Orchestrator: 可驗證證據 (resourceType/id)
-    Orchestrator->>Model: 帶入證據上下文進行次輪對話
-    Model-->>Orchestrator: 最終自然語言回答
-    Orchestrator-->>Gateway: 組裝結構化回應與 Evidence Drawer
-    Gateway-->>UI: 呈現回答與可點擊驗證之 FHIR 引用
+    App->>Agent: 1. 提問 (帶入獨立 patient_id)
+    Agent->>Model: 2. 發送問題與許可工具清單
+    Model-->>Agent: 3. 請求調用工具 (如 get_conditions)
+    Note over Agent,Tools: 伺服器端強制注入 patient_id<br/>覆寫模型參數，防止跨病患越權
+    Agent->>Tools: 4. 派送工具 (Strict Pydantic Schema)
+    Tools-->>Agent: 5. 回傳可驗證證據 (resourceType/id)
+    Agent->>Model: 6. 帶入證據進行次輪對話
+    Model-->>Agent: 7. 最終自然語言回答
+    Agent-->>App: 8. 回應與 FHIR 引用證據 Drawer
 ```
 
 ---
