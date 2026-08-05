@@ -72,23 +72,3 @@ uv run python scripts/download_or_generate_synthea.py --subset 100
 # 啟動前後端服務 (開啟 localhost:8000)
 just run
 ```
-
----
-
-## 專案結構
-
-```text
-├── app/                 # React 19 + Vite 前端應用程式
-├── configs/             # 系統配置與 Provider 白名單定義
-├── docs/                # 架構說明與 Case Study 文檔
-├── reports/             # 測試報告與負載測試產物 (Loadtest Reports)
-├── src/                 # 後端 FastAPI、Agent Orchestrator 與 Tool Registry
-├── tests/               # Pytest 與 Vitest 自動化測試集
-├── DATA_CARD.md         # Synthea 資料集來源與權重說明
-├── MODEL_CARD.md        # 模型評測紀錄與邊界說明
-└── SECURITY.md          # 資安威脅模型與防禦規範
-```
-
-## 授權條款
-
-本專案程式碼採用 [Apache-2.0 License](LICENSE) 開源。示範數據全數由 Synthea (MITRE) 產生，不包含任何真實個人醫療紀錄。
