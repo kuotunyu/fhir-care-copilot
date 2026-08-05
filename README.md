@@ -23,18 +23,33 @@
 
 ---
 
-## 系統架構
+## 系統架構與請求時序
+
+### 請求處理與資安隔離時序
 
 ```mermaid
-flowchart TD
-    UI["React 19 + Vite 前端 UI"] -->|"1. 傳送 patient_id + 提問"| API["FastAPI 請求邊界網關"]
-    API --> AGENT["Agent Orchestrator (超時防護與工具調度)"]
-    AGENT <--> PROVIDER["Provider Adapter (Mock / Gemini / OpenAI)"]
-    AGENT -->|"2. 許可權限之 Tool 呼叫"| TOOLS["唯讀 Tool Registry (伺服器注入 Patient Scope)"]
-    TOOLS --> STORE["FHIRStore (R4 Resource 檢索)"]
-    STORE --> DATA["Synthea FHIR R4 合成數據庫"]
-    TOOLS -.->|"3. 傳遞結構化結果與 FHIR Evidence"| AGENT
-    API -.->|"4. 寫入無 PII 追蹤"| AUDIT["可稽核 Audit Hash Chain (Postgres / Local)"]
+sequenceDiagram
+    autonumber
+    participant UI as React 前端 UI
+    participant Gateway as FastAPI 網關
+    participant Orchestrator as Agent Orchestrator
+    participant Model as LLM Provider
+    participant Tools as 唯讀 Tool Registry
+    participant FHIR as FHIRStore (Synthea)
+
+    UI->>Gateway: POST /api/chat (patient_id, question)
+    Gateway->>Orchestrator: 初始化 Agent Session (帶入認證)
+    Orchestrator->>Model: 發送提問與許可工具清單
+    Model-->>Orchestrator: 工具調用請求 (如 get_conditions)
+    Note over Orchestrator,Tools: 伺服器端強制注入 patient_id<br/>覆寫模型可能產生之參數，防範越權讀取
+    Orchestrator->>Tools: 派送工具 (Strict Pydantic Schema)
+    Tools->>FHIR: 檢索 Resource (patient_id, resourceType)
+    FHIR-->>Tools: 回傳 Synthea FHIR R4 Bundle
+    Tools-->>Orchestrator: 可驗證證據 (resourceType/id)
+    Orchestrator->>Model: 帶入證據上下文進行次輪對話
+    Model-->>Orchestrator: 最終自然語言回答
+    Orchestrator-->>Gateway: 組裝結構化回應與 Evidence Drawer
+    Gateway-->>UI: 呈現回答與可點擊驗證之 FHIR 引用
 ```
 
 ---
