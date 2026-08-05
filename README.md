@@ -10,7 +10,7 @@
 
 ---
 
-## 核心賣點與工程展示 (What this demonstrates)
+## 核心技術特性
 
 1. **伺服器端病患權限強制注入 (Server-Injected Patient Scope)**：
    每次 API 請求之 `patient_id` 由後端伺服器單獨注入 Tool Dispatch 層級，確保 LLM 模型無法自行覆寫或跨病患讀取資料。
@@ -23,7 +23,7 @@
 
 ---
 
-## 系統架構 (System Architecture)
+## 系統架構
 
 ```mermaid
 flowchart TD
@@ -39,7 +39,7 @@ flowchart TD
 
 ---
 
-## 安全邊界實作 (Security Boundaries)
+## 安全邊界機制
 
 | 安全機制維度 | 實作行為與硬性限制說明 |
 |---|---|
@@ -50,18 +50,18 @@ flowchart TD
 
 ---
 
-## 快速開始 (Quick Start)
+## 快速開始
 
 專案預設自動啟動 Deterministic `mock` 模式，無須設定任何 API Key 即可完整體驗系統功能。
 
-### 1. 使用 Docker Compose 啟動 (推薦)
+### 使用 Docker Compose 啟動
 
 ```bash
 # 複製並啟動容器 (伺服器將執行於 localhost:8000)
 docker compose up --build
 ```
 
-### 2. 本地開發環境啟動
+### 本地開發環境啟動
 
 需求：Python 3.13、`uv`、`just`、Node.js。
 
@@ -75,7 +75,7 @@ just run
 
 ---
 
-## 專案結構與文件導覽
+## 專案結構
 
 ```text
 ├── app/                 # React 19 + Vite 前端應用程式
