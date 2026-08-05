@@ -35,15 +35,14 @@ sequenceDiagram
     participant Model as LLM Provider
     participant Tools as Tool Registry / FHIR
 
-    App->>Agent: 1. 提問 (帶入獨立 patient_id)
-    Agent->>Model: 2. 發送問題與許可工具清單
+    App->>Agent: 1. 提問 (帶入 patient_id)
+    Agent->>Model: 2. 發送提問與工具白名單
     Model-->>Agent: 3. 請求調用工具 (如 get_conditions)
-    Note over Agent,Tools: 伺服器端強制注入 patient_id<br/>覆寫模型參數，防止跨病患越權
-    Agent->>Tools: 4. 派送工具 (Strict Pydantic Schema)
-    Tools-->>Agent: 5. 回傳可驗證證據 (resourceType/id)
-    Agent->>Model: 6. 帶入證據進行次輪對話
-    Model-->>Agent: 7. 最終自然語言回答
-    Agent-->>App: 8. 回應與 FHIR 引用證據 Drawer
+    Note over Agent,Tools: 伺服器強制注入 patient_id (防範越權)
+    Agent->>Tools: 4. 派送工具 (Strict Schema)
+    Tools-->>Agent: 5. 回傳 FHIR 證據 (resourceType/id)
+    Agent->>Model: 6. 帶入證據生成回答
+    Model-->>App: 7. 呈現回答與引用 Drawer
 ```
 
 ---
