@@ -19,13 +19,15 @@ build/
 node_modules/
 app/dist/
 
-# 內部工作文件 — 留在本機,不對外
-# 這些是工作日誌、執行計畫或助理設定，不屬於可驗證的公開產品文件。
+# 內部工作文件與私人面試筆記 — 留在本機,不對外
 /PLAN.md
 /CLAUDE.md
 /.claude/
 /docs/PROGRESS.md
 /docs/superpowers/
+interview*.md
+INTERVIEW_PREP.md
+*.private.md
 
 # 本地雜項
 .DS_Store
