@@ -8,6 +8,10 @@
 
 > **免責聲明**：本系統僅為醫療資訊互通性 (FHIR Interoperability)、LLM Orchestration 與安全邊界之工程展示，不可用於實際臨床診斷或醫療行為。
 
+**快速審閱：** [75 秒 Demo](https://github.com/kuotunyu/fhir-care-copilot/releases/download/v0.2.0/FHIR_Care_Copilot_Demo_v0.2.0.mp4) · [Case Study](docs/CASE_STUDY.md)
+
+公開 demo 固定使用 `mock` provider 與 Synthea 合成資料，不呼叫付費模型 API。
+
 ---
 
 ## 核心技術特性
@@ -55,6 +59,13 @@ sequenceDiagram
 | **唯讀 Tool 限制** | 白名單僅開放 Deterministic 唯讀檢索工具，完全無 FHIR 寫入權限，並透過 Pydantic Strict Schema 阻擋未預期參數。 |
 | **證據鏈語意 (Evidence)** | 工具回應包含 FHIR `resourceType/id` 引用，驗證該 Resource 於 Synthea 數據庫之真實存在性。 |
 | **隱私與日誌安全** | Log 與 Trace 剔除姓名與自由文字，對病患 ID 進行偽匿名化 (Pseudonymization)，並透過簽名雜湊鏈維護 Audit Integrity。 |
+
+病患資料檢索只會經由 allowlisted deterministic tools；tool 結果包含 FHIR `resourceType/id` references。
+`reference existence` 不代表自然語言答案逐句 grounded；`reference integrity` 僅驗證該引用存在於本次使用的 Synthea store，不代表逐句正確、完整或具醫療效力。
+
+### 失敗處理邊界
+
+無效 API key 以 401 fail closed；audit backend 不可用時 health 會降級並以 503 阻擋 chat；provider 持續失敗時回傳結構化拒答。
 
 ---
 
