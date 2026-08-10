@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         # setup-uv v8 起廢除 major tag(@v8 不存在),需釘精確版本
@@ -59,7 +59,7 @@ jobs:
         # 不用真實 100 位病患資料(未進 git,CI 上不存在)。
         # 輸出路徑用 runner.temp 而不是寫死 /tmp:windows runner 沒有 /tmp。
         # 也刻意寫成單行,不用反斜線續行(那是 bash 語法,pwsh 會解析失敗)。
-        run: uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --out "${{ runner.temp }}/ci-eval-smoke.json"
+        run: uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --quality-gate --out "${{ runner.temp }}/ci-eval-smoke.json"
 
   postgres:
     # 稽核軌跡的 Postgres 後端(營運層 Phase 4)。
@@ -84,7 +84,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.3.2
@@ -119,9 +119,9 @@ jobs:
     # 測試檔放在 src/ 底下,所以 `tsc -b` 會一併型別檢查它們;正式 bundle 不受影響。
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -146,7 +146,7 @@ jobs:
     # 「用等效方式驗證」抓不到的那一類。
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         # 不 push,只驗證建得起來。build 期間會下載 Synthea 樣本資料烤進 image,

@@ -77,6 +77,11 @@ def main() -> None:
         "會在建立 provider 那一行才炸",
     )
     parser.add_argument("--out", default=str(REPO_ROOT / "reports" / "eval_results.json"))
+    parser.add_argument(
+        "--quality-gate",
+        action="store_true",
+        help="要求 release-critical mock 指標全數通過;供 CPU-only CI 使用",
+    )
     args = parser.parse_args()
     if args.load_env:
         load_env_file(REPO_ROOT / ".env")
@@ -88,11 +93,19 @@ def main() -> None:
 
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from fhir_copilot.config import load_guardrails, load_pricing
-    from fhir_copilot.eval import BudgetExceededError, compute_metrics, generate_cases, run_eval
+    from fhir_copilot.eval import (
+        BudgetExceededError,
+        build_eval_provenance,
+        compute_metrics,
+        eval_quality_gate_failures,
+        generate_cases,
+        run_eval,
+    )
     from fhir_copilot.providers.factory import make_provider
     from fhir_copilot.store import LocalBundleFHIRStore
 
-    store = LocalBundleFHIRStore(args.data_dir)
+    data_dir = Path(args.data_dir).resolve()
+    store = LocalBundleFHIRStore(data_dir)
     guardrails = load_guardrails()
     pricing = load_pricing()
     provider = make_provider(args.provider)
@@ -142,6 +155,8 @@ def main() -> None:
         raise SystemExit(1) from exc
 
     metrics = compute_metrics(results)
+    metrics_payload = metrics.model_dump()
+    provenance = build_eval_provenance(repo_root=REPO_ROOT, data_dir=data_dir)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,7 +167,8 @@ def main() -> None:
         "full_eval": args.full_eval,
         "n_cases_requested": len(cases),
         "n_cases_completed": len(results),
-        "metrics": metrics.model_dump(),
+        "provenance": provenance,
+        "metrics": metrics_payload,
         "results": [
             {
                 "case_id": r.case.case_id,
@@ -196,12 +212,29 @@ def main() -> None:
     print(f"reference integrity rate: {_fmt_rate(metrics.reference_integrity_rate)}")
     print(f"evidence coverage rate:    {_fmt_rate(metrics.evidence_coverage_rate)}")
     print(f"answer without evidence:   {_fmt_rate(metrics.answer_without_evidence_rate)}")
+    print(f"out-of-scope refusal rate: {_fmt_rate(metrics.out_of_scope_refusal_rate)}")
     print(f"refusal accuracy:        {_fmt_rate(metrics.refusal_accuracy)}")
     print(f"injection resistance:    {_fmt_rate(metrics.injection_resistance_rate)}")
     print(f"p50 / p95 latency (ms):  {metrics.p50_latency_ms:.0f} / {metrics.p95_latency_ms:.0f}")
     print(
         f"avg / total cost (USD):  ${metrics.average_cost_usd:.5f} / ${metrics.total_cost_usd:.4f}"
     )
+    print(
+        "provenance: "
+        f"git={provenance['git_sha']} "
+        f"data_sha256={provenance['data_sha256']} "
+        f"config_sha256={provenance['config_sha256']}"
+    )
+
+    if args.quality_gate:
+        failures = eval_quality_gate_failures(
+            requested=len(cases), completed=len(results), metrics=metrics_payload
+        )
+        if failures:
+            for failure in failures:
+                logger.error("quality gate: %s", failure)
+            raise SystemExit(1)
+        print("quality gate: PASS")
 
 
 if __name__ == "__main__":

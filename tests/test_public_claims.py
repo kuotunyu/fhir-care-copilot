@@ -44,6 +44,31 @@ def test_readme_defines_reference_integrity_without_claim_grounding() -> None:
     assert "reference integrity" in text.lower()
 
 
+def test_readme_does_not_overstate_authorization_evidence_reproducibility_or_audit() -> None:
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    overclaims = (
+        "病患權限強制注入",
+        "每次回應均附帶",
+        "100% 可重現性",
+        "不可竄改 Audit Log",
+        "無損與極速",
+    )
+
+    found = [claim for claim in overclaims if claim in text]
+    assert not found, f"README 含超過實作邊界的 claim: {found}"
+    assert "不構成 patient-level authorization" in text
+    assert "tamper-evident" in text
+    assert "拒答或合法空結果可能沒有 evidence" in text
+
+
+def test_readme_sequence_returns_provider_answer_to_orchestrator() -> None:
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Model-->>Agent" in text
+    assert "Agent-->>App" in text
+    assert "Model-->>App" not in text
+
+
 @pytest.mark.parametrize("relative_path", ("README.md", "docs/CASE_STUDY.md"))
 def test_public_patient_scope_copy_describes_each_api_request(relative_path: str) -> None:
     text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")

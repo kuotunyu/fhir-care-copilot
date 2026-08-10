@@ -50,6 +50,8 @@ Prompt injection 另有多次重跑 artifact；單次百分比並不穩定，且
 
 服務層負載測試使用固定延遲的 mock provider，量 FastAPI、路由、工具、FHIR store 與工程控制的 overhead，不含外部 LLM latency；兩條量測軌不可混用。完整控制組、飽和點與儀器雜訊說明見 [loadtest/comparison.md](../reports/loadtest/comparison.md)。
 
+CI 另有 CPU-only deterministic mock quality gate：要求 synthetic fixture 題目全數完成，tool selection、reference integrity、evidence coverage 與 out-of-scope refusal 達到既定門檻，且不得產生無 evidence 的資料回答。每次報告同時記錄 git SHA、synthetic data SHA-256 與 config SHA-256；這些 provenance 只追溯工程輸入版本，不把 mock 分數包裝成 paid-provider 或臨床結果。實作與門檻可直接核對 [workflow](../.github/workflows/ci.yml)、[eval CLI](../scripts/run_eval.py) 與 [tests](../tests/test_eval_release_evidence.py)。
+
 沒有量到、也不宣稱的項目包括：完整 claim-level grounding、真實世界病患資料表現、臨床安全性、臨床效益，以及多租戶授權正確性。
 
 ## Failure paths 與可觀測性

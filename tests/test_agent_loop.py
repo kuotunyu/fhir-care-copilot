@@ -142,7 +142,7 @@ class _OutOfScopeProvider:
 
 
 class TestReportOutOfScope:
-    """「病患存在,但問的是五個工具都涵蓋不到的東西」。
+    """「病患存在,但問的是六個資料工具都涵蓋不到的東西」。
 
     2026-07-26 用真實模型實測(gemini-3.1-flash-lite,問保險給付範圍),
     在這個工具存在之前實際發生的是:
@@ -413,7 +413,7 @@ class TestRefusalReason:
 
 
 class TestRequireToolCallBeforeAnswer:
-    """「病患存在,但問的東西五個工具都涵蓋不到」——在此之前這個情況沒有結構保護。
+    """「病患存在,但問的東西六個資料工具都涵蓋不到」——在此之前這個情況沒有結構保護。
 
     專案的核心宣稱是「LLM 不憑記憶回答病患事實」,但那件事**只寫在 system prompt
     裡**。模型不照做時,回應契約標的是 refused=false、evidence=[],外觀上跟
@@ -550,6 +550,50 @@ def test_answers_with_evidence_and_zero_cost_via_mock(
     assert result.model == "mock-deterministic"
     assert result.estimated_cost_usd == 0.0
     assert result.latency_ms >= 0
+
+
+def test_mock_allergy_query_returns_allergy_evidence(
+    store: LocalBundleFHIRStore, guardrails: Guardrails, pricing: dict[str, Any]
+) -> None:
+    result = answer_question(
+        provider=MockProvider(),
+        store=store,
+        patient_id=AMY_ID,
+        question="他有藥物過敏嗎?",
+        guardrails=guardrails,
+        pricing=pricing,
+    )
+
+    assert result.refused is False
+    assert result.evidence
+    assert all(e.resource_type == "AllergyIntolerance" for e in result.evidence)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "他的保險給付範圍是什麼?",
+        "請根據他的用藥建議治療劑量",
+    ],
+)
+def test_mock_unsupported_questions_are_structured_refusals(
+    question: str,
+    store: LocalBundleFHIRStore,
+    guardrails: Guardrails,
+    pricing: dict[str, Any],
+) -> None:
+    result = answer_question(
+        provider=MockProvider(),
+        store=store,
+        patient_id=AMY_ID,
+        question=question,
+        guardrails=guardrails,
+        pricing=pricing,
+    )
+
+    assert result.refused is True
+    assert result.refusal_reason == RefusalReason.OUT_OF_SCOPE
+    assert result.evidence == []
 
 
 def test_valid_empty_result_is_not_a_refusal(

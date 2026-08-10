@@ -2,12 +2,12 @@ cff-version: 1.2.0
 message: "使用本專案請引用下方 preferred-citation(Synthea 官方論文)。本專案本身是展示用作品,無獨立論文。"
 title: "FHIR Care Copilot"
 type: software
-version: "0.2.1"
+version: "0.2.2"
 authors:
   - name: "kuotunyu"
 repository-code: "https://github.com/kuotunyu/fhir-care-copilot"
 license: Apache-2.0
-date-released: "2026-08-04"
+date-released: "2026-08-10"
 abstract: >
   可追溯、工具受控、預設唯讀的長照個案查詢 agent,基於 Synthea 合成病患 FHIR R4 資料。
   不是醫療診斷工具,僅供合成資料技術展示用途。

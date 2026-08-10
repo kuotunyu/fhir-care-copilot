@@ -9,14 +9,23 @@ import yaml
 from fhir_copilot import __version__ as runtime_version
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RELEASE_VERSION = "0.2.1"
-RELEASE_DATE = "2026-08-04"
+RELEASE_VERSION = "0.2.2"
+RELEASE_DATE = "2026-08-10"
 
 
 def test_ci_workflow_uses_read_only_token_permissions() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
 
     assert workflow["permissions"] == {"contents": "read"}
+
+
+def test_ci_uses_node24_compatible_official_actions() -> None:
+    text = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "actions/checkout@v6" in text
+    assert "actions/setup-node@v6" in text
+    assert "actions/checkout@v4" not in text
+    assert "actions/setup-node@v4" not in text
 
 
 def test_package_and_citation_release_metadata_match() -> None:

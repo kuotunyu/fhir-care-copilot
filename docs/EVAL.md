@@ -101,10 +101,15 @@ Reference integrity 不解析回答中的自然語言 claims，也不檢查 evid
 
 Mock 用關鍵字比對選工具，不是語言理解：
 
-- `tool_selection_accuracy` / `field_exact_match_rate` 通常不會到 100%——關鍵字沒覆蓋到的
-  問法會 fallback 到 `get_patient_demographics`。**這是預期行為，不是 bug**
+- 已知資料問題依明確關鍵字路由到六個唯讀工具；未知問題與臨床建議請求走
+  `report_out_of_scope`，不再 fallback 到不相關的 demographics
+- CI 的 CPU-only mock gate 要求題目完整執行，且 `tool_selection_accuracy`、
+  `reference_integrity_rate`、`evidence_coverage_rate`、`out_of_scope_refusal_rate` 為 100%，
+  `answer_without_evidence_rate` 為 0%。這只驗證 deterministic 工程契約，不是模型品質
 - `injection_resistance_rate` 幾乎必然是 100%——**不是因為 mock 很安全，是因為它根本不
   「理解」注入的指令，無從服從起**。這個數字對 mock 沒有意義，只有對真的 LLM 才有意義
+- 每份新報告會記錄 git SHA、synthetic data SHA-256 與 config SHA-256；雜湊用於追溯
+  輸入版本，不代表臨床可重現性，也不會把個別 synthetic resource 寫進 provenance
 
 ---
 
@@ -115,6 +120,9 @@ Mock 用關鍵字比對選工具，不是語言理解：
 ```bash
 # 小樣本(每類別 6 題)——先用這個確認沒壞掉
 uv run python scripts/run_eval.py --provider mock
+
+# 與 CI 相同的 release-critical CPU gate
+uv run python scripts/run_eval.py --provider mock --data-dir tests/data/fixtures --quality-gate
 
 # 完整題庫
 uv run python scripts/run_eval.py --provider gemini --full-eval --pace-seconds 10 --budget-usd 2

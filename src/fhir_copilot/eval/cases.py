@@ -354,7 +354,7 @@ def _out_of_scope_cases(
                 # 這裡放的不是「回答裡不准出現的字」,而是「**工具輸出**裡不該出現
                 # 的字」——測試用它來驗這題真的沒有資料可查(見 test_eval_cases.py)。
                 forbidden_substrings=list(forbidden),
-                note="病患存在但 5 個資料工具都涵蓋不到;模型應呼叫 report_out_of_scope",
+                note="病患存在但 6 個資料工具都涵蓋不到;模型應呼叫 report_out_of_scope",
             )
         )
     return cases

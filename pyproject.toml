@@ -1,6 +1,6 @@
 [project]
 name = "fhir-copilot"
-version = "0.2.1"
+version = "0.2.2"
 description = "可追溯、工具受控、預設唯讀的長照個案查詢 agent(Synthea FHIR R4 合成資料)"
 readme = "README.md"
 requires-python = ">=3.13"

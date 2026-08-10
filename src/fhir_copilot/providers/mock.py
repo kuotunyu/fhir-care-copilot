@@ -38,7 +38,23 @@ class MockProviderFailure(RuntimeError):
 
 
 # 依序比對;第一個命中的關鍵字決定要呼叫的工具
+_REFUSAL_KEYWORDS = (
+    "建議治療",
+    "治療建議",
+    "建議用藥",
+    "用藥建議",
+    "建議劑量",
+    "治療劑量",
+    "開藥",
+    "開立處方",
+    "診斷我",
+    "recommend treatment",
+    "recommend medication",
+    "prescribe",
+    "dosage advice",
+)
 _KEYWORD_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("過敏", "allergy", "allergies", "intolerance", "不耐"), "list_allergies"),
     (("藥", "medication", "用藥"), "list_active_medications"),
     (("照護計畫", "careplan", "care plan"), "get_care_plan_timeline"),
     (("診斷", "condition", "疾病", "病症"), "list_active_conditions"),
@@ -48,13 +64,16 @@ _KEYWORD_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (("基本資料", "demographics", "姓名", "性別", "出生"), "get_patient_demographics"),
 )
-_DEFAULT_TOOL = "get_patient_demographics"
+_DEFAULT_TOOL = "report_out_of_scope"
+_OUT_OF_SCOPE_REASON = "deterministic mock 未涵蓋此問題"
 
 _NOT_FOUND_TEXT = "查無此病患資料,無法回答。"
 
 
 def _select_tool(user_message: str) -> str:
     lowered = user_message.lower()
+    if any(keyword in lowered for keyword in _REFUSAL_KEYWORDS):
+        return "report_out_of_scope"
     for keywords, tool_name in _KEYWORD_RULES:
         if any(kw.lower() in lowered for kw in keywords):
             return tool_name
@@ -95,6 +114,21 @@ def _render_medications(output: dict[str, Any]) -> str:
     return f"目前生效中的用藥:{names}。"
 
 
+def _render_allergies(output: dict[str, Any]) -> str:
+    if not output.get("ok"):
+        return _NOT_FOUND_TEXT
+    allergies = output.get("allergies") or []
+    if not allergies:
+        return "目前沒有過敏或不耐紀錄。"
+    parts = [
+        f"{item['display']}"
+        f"(clinical_status={item.get('clinical_status') or '未記錄'},"
+        f"verification_status={item.get('verification_status') or '未記錄'})"
+        for item in allergies
+    ]
+    return "過敏與不耐紀錄:" + "、".join(parts) + "。"
+
+
 def _render_observations(output: dict[str, Any]) -> str:
     if not output.get("ok"):
         return _NOT_FOUND_TEXT
@@ -126,6 +160,7 @@ _RENDERERS: dict[str, Any] = {
     "get_patient_demographics": _render_demographics,
     "list_active_conditions": _render_conditions,
     "list_active_medications": _render_medications,
+    "list_allergies": _render_allergies,
     "get_recent_observations": _render_observations,
     "get_care_plan_timeline": _render_care_plans,
 }
@@ -205,7 +240,12 @@ class MockProvider:
         self._sleep()
         self._maybe_fail()
         tool_name = _select_tool(user_message)
-        call = RequestedToolCall(call_id="mock-call-1", tool_name=tool_name, arguments={})
+        arguments = (
+            {"missing_information": _OUT_OF_SCOPE_REASON}
+            if tool_name == "report_out_of_scope"
+            else {}
+        )
+        call = RequestedToolCall(call_id="mock-call-1", tool_name=tool_name, arguments=arguments)
         return ProviderStep(
             state=None,
             tool_calls=(call,),

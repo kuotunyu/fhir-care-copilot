@@ -22,12 +22,38 @@ def test_start_selects_tool_by_keyword_and_requests_one_call() -> None:
     assert step.tool_calls[0].arguments == {}  # patient_id 由 agent loop 注入,mock 不該自己塞
 
 
-def test_start_falls_back_to_demographics_when_no_keyword_matches() -> None:
+def test_start_prioritizes_allergy_over_generic_medication_keyword() -> None:
     provider = MockProvider()
 
-    step = provider.start(system_prompt="sys", user_message="哈囉", tool_specs=READ_ONLY_TOOLS)
+    step = provider.start(
+        system_prompt="sys", user_message="他有藥物過敏嗎?", tool_specs=READ_ONLY_TOOLS
+    )
 
-    assert step.tool_calls[0].tool_name == "get_patient_demographics"
+    assert step.tool_calls[0].tool_name == "list_allergies"
+    assert step.tool_calls[0].arguments == {}
+
+
+def test_start_routes_unknown_question_to_structured_out_of_scope() -> None:
+    provider = MockProvider()
+
+    step = provider.start(
+        system_prompt="sys", user_message="他的保險給付範圍是什麼?", tool_specs=READ_ONLY_TOOLS
+    )
+
+    assert step.tool_calls[0].tool_name == "report_out_of_scope"
+    assert step.tool_calls[0].arguments == {
+        "missing_information": "deterministic mock 未涵蓋此問題"
+    }
+
+
+def test_start_routes_clinical_advice_request_to_structured_out_of_scope() -> None:
+    provider = MockProvider()
+
+    step = provider.start(
+        system_prompt="sys", user_message="請根據他的用藥建議治療劑量", tool_specs=READ_ONLY_TOOLS
+    )
+
+    assert step.tool_calls[0].tool_name == "report_out_of_scope"
 
 
 def test_continue_with_tool_results_renders_final_answer_from_real_shape() -> None:
