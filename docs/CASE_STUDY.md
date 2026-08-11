@@ -64,7 +64,7 @@ CI 另有 CPU-only deterministic mock quality gate：要求 synthetic fixture �
 | Logs/traces 洩漏資料 | `patient_id` 使用 process-local keyed HMAC pseudonym；自由文字只記形狀、姓名不記錄，並清洗 request id | 這是 PII-safe logs/traces 的應用層邊界；collector 的 retention 仍由部署者管理（[test](../tests/test_pii_redaction.py)、[SECURITY](../SECURITY.md)）。 |
 | Provider timeout、429 或持續失敗 | SDK-level timeout、指數 retry、circuit breaker；重試成本計入 budget | 熔斷時停止呼叫 provider 並回結構化拒答；它保護服務資源，不證明回答品質（[test](../tests/test_resilience.py)、[README failure paths](../README.md#失敗處理邊界)）。 |
 | Audit backend 不可用 | 未設定 `DATABASE_URL` 時使用 append-only JSONL；設定 Postgres 但資料庫不可達時標記 audit unavailable | `/api/health` 回 `degraded`，唯讀端點維持；`/api/chat` 以 503 fail closed。JSONL 沒有 container audit volume，Postgres/collector retention 也不是應用自動處理（[README failure paths](../README.md#失敗處理邊界)）。 |
-| 容器或依賴狀態不明 | Docker image 內建 `/api/health` healthcheck；CI 執行 image build 與 container smoke | Health 回應揭露 demo/provider/audit 狀態；健康檢查與 CI 測試都只是工程運作證據，不是臨床驗證（[GitHub Actions run 31387326602](https://github.com/kuotunyu/fhir-care-copilot/actions/runs/31387326602)）。 |
+| 容器或依賴狀態不明 | Docker image 內建 `/api/health` healthcheck；CI 執行 image build 與 container smoke | Health 回應揭露 demo/provider/audit 狀態；健康檢查與 CI 測試都只是工程運作證據，不是臨床驗證（[main branch CI](https://github.com/kuotunyu/fhir-care-copilot/actions/workflows/ci.yml?query=branch%3Amain)）。 |
 
 ## 為什麼保持 modular monolith
 
@@ -86,4 +86,4 @@ CI 另有 CPU-only deterministic mock quality gate：要求 synthetic fixture �
 2. **看模型行為與指標限制**：[MODEL_CARD](../MODEL_CARD.md) → [完整歷史報告](../reports/model_comparison_full.md)。
 3. **看 patient scope 的精確實作決策**：[ADR 0003](decisions/0003-patient-scope-injection.md)。
 4. **看 authentication、retention 與 synthetic-only 邊界**：[SECURITY](../SECURITY.md) → [DATA_CARD](../DATA_CARD.md)。
-5. **看可重現的交付證據**：[GitHub Actions run 31387326602](https://github.com/kuotunyu/fhir-care-copilot/actions/runs/31387326602) → [公開 mock demo](https://huggingface.co/spaces/steven0226/fhir-care-copilot)。公開頁面應以 `/api/health` 回傳的 `provider=mock`、`model_id=mock-deterministic` 與 `demo_mode=true` 確認目前確實在無付費呼叫的 demo mode。
+5. **看可重現的交付證據**：[main branch CI](https://github.com/kuotunyu/fhir-care-copilot/actions/workflows/ci.yml?query=branch%3Amain) → [公開 mock demo](https://huggingface.co/spaces/steven0226/fhir-care-copilot)。公開頁面應以 `/api/health` 回傳的 `provider=mock`、`model_id=mock-deterministic` 與 `demo_mode=true` 確認目前確實在無付費呼叫的 demo mode。
