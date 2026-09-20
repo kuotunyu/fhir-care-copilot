@@ -86,9 +86,14 @@ docker compose up --build
 需求：Python 3.13、`uv`、`just`、Node.js。
 
 ```bash
+# 依 app/package-lock.json 安裝前端依賴
+npm ci --prefix app
+
 # 下載/產生 100 位 Synthea 合成病患數據
 uv run python scripts/download_or_generate_synthea.py --subset 100
 
 # 啟動前後端服務 (開啟 localhost:8000)
 just run
 ```
+
+`just run` 會先建置前端，再啟動服務；它不會自動安裝前端依賴。
